@@ -543,6 +543,14 @@ end
 # A `call` instruction targeting an LLVM intrinsic (`@llvm.ctpop`, `@llvm.abs`, …) is a single native instruction, not a runtime dispatch. Only flag calls into Julia runtime functions (`@j_*`, `@julia_*`, `@ijl_*`, `@jl_*`).
 runtime_calls(ops) = count(l -> occursin("call ", l) && !occursin("@llvm.", l), ops)
 
+# Unnamed SSA values (`%16`, `%11`, …) are numbered sequentially across the whole function, so the same operation sequence picks up different numbers depending on how much unrelated code precedes it (coverage counters, surrounding context). Renumber each distinct `%<n>` by order of first appearance so equality checks compare structure and data flow rather than absolute ids. Named values like `%"x::Int3"` have no digit right after `%` and are left untouched.
+function normalize_ssa(ops)
+    mapping = Dict{String, Int}()
+    map(ops) do l
+        replace(l, r"%\d+" => m -> "%" * string(get!(mapping, m, length(mapping))))
+    end
+end
+
 @testset "performance invariants" begin
     using InteractiveUtils
     @emulate UInt3 Int3 UInt20
@@ -584,10 +592,10 @@ runtime_calls(ops) = count(l -> occursin("call ", l) && !occursin("@llvm.", l), 
         VERSION >= v"1.11" && @test length(ops) == exact_ops
     end
 
-    @test llvm_ops(le_uint_2, Tuple{UInt}) == llvm_ops(le_int_2, Tuple{UInt})
-    @test llvm_ops(le_int3_2, Tuple{Int3}) == llvm_ops(le_int3_int_2, Tuple{Int3})
-    @test llvm_ops(le_uint3_2, Tuple{UInt3}) == llvm_ops(le_uint3_int_2, Tuple{UInt3})
-    @test llvm_ops(le_uint_typemax_int, Tuple{UInt}) == llvm_ops(le_int_typemax_int, Tuple{UInt})
+    @test normalize_ssa(llvm_ops(le_uint_2, Tuple{UInt})) == normalize_ssa(llvm_ops(le_int_2, Tuple{UInt}))
+    @test normalize_ssa(llvm_ops(le_int3_2, Tuple{Int3})) == normalize_ssa(llvm_ops(le_int3_int_2, Tuple{Int3}))
+    @test normalize_ssa(llvm_ops(le_uint3_2, Tuple{UInt3})) == normalize_ssa(llvm_ops(le_uint3_int_2, Tuple{UInt3}))
+    @test normalize_ssa(llvm_ops(le_uint_typemax_int, Tuple{UInt})) == normalize_ssa(llvm_ops(le_int_typemax_int, Tuple{UInt}))
 end
 
 
