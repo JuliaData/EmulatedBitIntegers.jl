@@ -549,6 +549,14 @@ runtime_calls(ops) = count(l -> occursin("call ", l) && !occursin("@llvm.", l), 
 
     # `>>>` with a runtime shift amount lowers to ~13 IR lines (mask, branch, mod), but the typical hot-path use is a constant shift; wrap it in a helper so the constant folds into the body.
     shr1(x::UInt3) = x >>> 1
+    le_uint_2(x::UInt) = x <= UInt(2)
+    le_int_2(x::UInt) = x <= 2
+    le_int3_2(x::Int3) = x <= Int3(2)
+    le_int3_int_2(x::Int3) = x <= 2
+    le_uint3_2(x::UInt3) = x <= UInt3(2)
+    le_uint3_int_2(x::UInt3) = x <= 2
+    le_uint_typemax_int(x::UInt) = x <= UInt(typemax(Int))
+    le_int_typemax_int(x::UInt) = x <= typemax(Int)
 
     # `(label, f, types, exact_ops)`. Counts are exact on Julia 1.11+ (calibrated on 1.11.9 and 1.13.0-rc1; both produce identical IR for these methods); 1.10's codegen differs, so the exact-count check is gated to 1.11+ below.
     cases = [
@@ -575,6 +583,11 @@ runtime_calls(ops) = count(l -> occursin("call ", l) && !occursin("@llvm.", l), 
         # Exact op count — any drift (up or down) signals a codegen change worth a look.
         VERSION >= v"1.11" && @test length(ops) == exact_ops
     end
+
+    @test llvm_ops(le_uint_2, Tuple{UInt}) == llvm_ops(le_int_2, Tuple{UInt})
+    @test llvm_ops(le_int3_2, Tuple{Int3}) == llvm_ops(le_int3_int_2, Tuple{Int3})
+    @test llvm_ops(le_uint3_2, Tuple{UInt3}) == llvm_ops(le_uint3_int_2, Tuple{UInt3})
+    @test llvm_ops(le_uint_typemax_int, Tuple{UInt}) == llvm_ops(le_int_typemax_int, Tuple{UInt})
 end
 
 
