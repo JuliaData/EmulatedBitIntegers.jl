@@ -529,14 +529,14 @@ end
 # Performance invariants
 # ============================================================================
 
-# Capture LLVM IR of `f(::types...)` and return the lines containing actual operations: drop preamble (`define`/`declare`), labels, braces, comments, blank lines, the trailing `ret` (bookkeeping, not an operation — when the caller inlines `f`, only the operation lines remain), and `--code-coverage` counter increments (`atomicrmw add` into a fixed pointer) so the count is the same with or without coverage instrumentation.
+# Capture LLVM IR of `f(::types...)` and return the lines containing actual operations: drop preamble (`define`/`declare`), labels, braces, comments, blank lines, the trailing `ret` (bookkeeping, not an operation — when the caller inlines `f`, only the operation lines remain), and `--code-coverage` line counters so the result is the same with or without coverage instrumentation. The counter is a single `atomicrmw add` through a fixed pointer on Julia 1.11+, or a `load volatile`/`add`/`store volatile` triple through `inttoptr` into a `%lcnt` temporary on Julia 1.10; both carry per-location pointer addresses that never agree between two functions.
 function llvm_ops(f, types)
     io = IOBuffer()
     InteractiveUtils.code_llvm(io, f, types; debuginfo=:none, raw=false)
     lines = split(io |> take! |> String, "\n")
     filter(lines) do l
         !contains(l, r"^\s*($|;|define|declare|\}|\{\s*$|.+:\s*$|ret\b)") &&
-            !contains(l, "atomicrmw add ptr inttoptr")
+            !contains(l, "inttoptr") && !contains(l, "%lcnt")
     end
 end
 
