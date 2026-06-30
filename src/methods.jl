@@ -159,6 +159,27 @@ for B in Union{Base.BitInteger, Base.IEEEFloat} |> Base.uniontypes .|> Symbol
     @eval Base.$B(x::EmulatedInteger) = x[] |> $B
 end
 
+# `signed`/`unsigned` (and their `Signed`/`Unsigned` constructor forms) map an emulated type onto its
+# opposite-signedness counterpart, which is itself an emulated type. By design `@emulate` only defines the
+# exact types requested, so the counterpart may not exist — in which case Base's generic `signed`/`unsigned`
+# bottom out in a bare `MethodError: no method matching Signed/Unsigned(::T)`. These abstract-typed fallbacks
+# replace that with an actionable message naming the `@emulate` call to run. They cost nothing once both types
+# exist: `@emulate` then installs concrete per-type methods (`Base.unsigned(::Type{Int3}) = UInt3`,
+# `Base.Unsigned(x::Int3) = x |> UInt3`, …) that are strictly more specific and win dispatch, so the fallbacks
+# never enter the resolved (and constant-folded) path. The type-form covers `unsigned(Int3)`; the constructor
+# form covers values, which Base's `unsigned(x)` routes through `convert(Unsigned, …)` → `Unsigned(::Int3)`.
+@noinline function _signedness_counterpart_undefined(::Type{T}, op::Symbol) where T<:EmulatedInteger
+    # Reconstruct the counterpart's *name* (the type itself does not exist yet) by rebuilding `T`'s `IntegerType`
+    # from its traits and flipping signedness via `signdual`; `Symbol` then applies the same naming/suffix rule
+    # `@emulate` uses, so the suggested `@emulate` call is always spelled exactly as the user would write it.
+    dual = IntegerType(issigned(T), bits(T), 8sizeof(T), false, parentmodule(storagetypeof(T))) |> signdual |> Symbol
+    throw(ArgumentError(lazy"`$op` is unavailable for `$T` because its counterpart type `$dual` has not been emulated. Run `@emulate $dual` first; EmulatedBitIntegers only defines the integer types you explicitly request, so a type and its signed/unsigned dual must each be emulated."))
+end
+Base.unsigned(::Type{T}) where T<:EmulatedSigned   = _signedness_counterpart_undefined(T, :unsigned)
+Base.signed(::Type{T})   where T<:EmulatedUnsigned = _signedness_counterpart_undefined(T, :signed)
+Base.Unsigned(x::T)      where T<:EmulatedSigned   = _signedness_counterpart_undefined(T, :unsigned)
+Base.Signed(x::T)        where T<:EmulatedUnsigned = _signedness_counterpart_undefined(T, :signed)
+
 # Only `<` and `<=` are defined; Base derives `>`/`>=` from them (`>(x, y) = y < x`). Defining `>`/`>=` here would supersede their universal `Any` fallbacks and invalidate a large amount of precompiled Base code for no behavioral gain.
 for f in (:<, :<=)
     @eval Base.$f(x::EmulatedInteger, y::EmulatedInteger) = $f(x[], y[])

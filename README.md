@@ -174,6 +174,22 @@ julia> zext(UInt16, Int8(-1))
 
 The single-argument form `zext(x)` zero-extends an emulated integer to its storage type, clearing the unused high bits. For non-emulated integers it is the identity.
 
+`signed` / `unsigned` (and the `Signed` / `Unsigned` constructors) behave exactly as in Base. The one thing special to `EmulatedBitIntegers` is that the counterpart type must itself be emulated: because `@emulate` only ever defines the exact types you request, `unsigned(Int5)` cannot return a `UInt5` that does not exist.
+
+```julia
+julia> @emulate Int5;
+
+julia> unsigned(Int5)
+ERROR: ArgumentError: `unsigned` is unavailable for `Int5` because its counterpart type `UInt5` has not been emulated. Run `@emulate UInt5` first; EmulatedBitIntegers only defines the integer types you explicitly request, so a type and its signed/unsigned dual must each be emulated.
+
+julia> @emulate UInt5;  # define the counterpart
+
+julia> unsigned(Int5)
+UInt5
+```
+
+In other words, to use `signed`/`unsigned` for a given width, emulate both halves of the pair, e.g. `@emulate Int5 UInt5`, as you would do for every function which returns a different type compared to its input argument(s).
+
 ## Related Work
 
 - [Simen Gaure added a pull request to `BitIntegers.jl`](https://github.com/rfourquet/BitIntegers.jl/pull/54) which implements support for arbitrary bit integers via `llvmcall`.

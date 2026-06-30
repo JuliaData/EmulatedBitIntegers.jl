@@ -327,6 +327,26 @@ end
     @test 255 % Int3 === Int3(-1)
 end
 
+@testset "signed / unsigned conversions" begin
+    # Both duals present: `signed`/`unsigned` reinterpret bits (type- and value-form),
+    # while the `Signed`/`Unsigned` constructor form range-checks like Base.
+    @emulate Int3 UInt3
+    @test unsigned(Int3) === UInt3
+    @test signed(UInt3) === Int3
+    @test unsigned(Int3(-1)) === UInt3(7)        # reinterpret, no range check
+    @test signed(UInt3(7)) === Int3(-1)
+    @test Unsigned(Int3(2)) === UInt3(2)
+    @test_throws InexactError Unsigned(Int3(-1))  # constructor form rejects negatives
+
+    # Missing counterpart: instead of a bare `MethodError`, raise an actionable
+    # `ArgumentError` naming the exact `@emulate` call to run. `Int13`'s dual `UInt13`
+    # is never emulated, so both the type- and value-form hit the fallback.
+    @emulate Int13
+    @test_throws ArgumentError unsigned(Int13)
+    @test_throws ArgumentError unsigned(Int13(5))
+    @test occursin("@emulate UInt13", (try; unsigned(Int13); catch e; e; end).msg)
+end
+
 @testset "checked arithmetic / gcd / lcm" begin
     @emulate UInt3 Int3
     @test Base.Checked.checked_abs(Int3(-2)) === Int3(2)
