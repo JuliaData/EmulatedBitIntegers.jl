@@ -319,6 +319,14 @@ end
     @test Int2(1) % Int3 === Int3(1)
 end
 
+@testset "modular cast from wide Integer to emulated" begin
+    @emulate UInt3 Int3
+    @test 256 % UInt3 === UInt3(0)
+    @test 256 % Int3 === Int3(0)
+    @test 255 % UInt3 === UInt3(7)
+    @test 255 % Int3 === Int3(-1)
+end
+
 @testset "checked arithmetic / gcd / lcm" begin
     @emulate UInt3 Int3
     @test Base.Checked.checked_abs(Int3(-2)) === Int3(2)
