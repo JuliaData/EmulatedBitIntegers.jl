@@ -1,6 +1,6 @@
 name = "EmulatedBitIntegers"
 uuid = "344cc1fc-1294-4796-b5db-6b4bd1573fb6"
-version = "0.4.0"
+version = "0.4.1"
 authors = ["Patrick Häcker <patrick.haecker@de.bosch.com>"]
 
 [workspace]
