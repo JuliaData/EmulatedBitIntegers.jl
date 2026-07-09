@@ -1,6 +1,6 @@
 # Methods on the abstract types `EmulatedInteger`/`EmulatedSigned`/`EmulatedUnsigned`. Loaded once at package precompile; each method serves every emulated type that ever gets created via `@emulate`. Compile-time constants come from the `S` (storage type) and `L` (logical bits) parameters of the abstract supertypes; inference folds the resulting trait chains down to literals at every call site.
 
-# Unwrap to the storage value. The macro installs a `storagetypeof(::Type{T}) = <storage_type>` constant-returning method per emulated type, so this folds to a single `reinterpret`. On Julia >= 1.12, `@emulate` additionally installs a per-type, `range`-annotated `getindex` (see `emulate.jl`) that is strictly more specific and wins dispatch; this abstract method then only serves as the fallback on older Julia (LLVM < 18, where the `range` attribute is unavailable).
+# Unwrap to the storage value. The macro installs a `storagetypeof(::Type{T}) = <storage_type>` constant-returning method per emulated type, so this folds to a single `reinterpret`. On Julia >= 1.13, `@emulate` additionally installs a per-type, `range`-annotated `getindex` (see `emulate.jl`) that is strictly more specific and wins dispatch; this abstract method then only serves as the fallback on older Julia (LLVM < 19, where the `range` attribute is unavailable).
 Base.getindex(x::EmulatedInteger) = reinterpret(x |> typeof |> storagetypeof, x)
 
 # Value form returns a wider value (the unwrapped storage int); type form returns the storage type. Both routed through the per-type `storagetypeof` trait.

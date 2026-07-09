@@ -66,11 +66,14 @@ function emulate(T::Symbol, t::IntegerType)
     # nothing, and comparisons against out-of-range constants become compile-time constants. Unlike
     # an `llvm.assume`, the attribute emits no instruction (no leftover call, no compile-time
     # overhead, no risk of inhibiting other passes) — it is pure metadata on an `alwaysinline`
-    # identity wrapper that vanishes after inlining. The `range` attribute requires LLVM 18, so this
-    # is gated to Julia >= 1.12; on older versions the abstract plain-`reinterpret` `getindex` in
-    # `methods.jl` serves as the (unannotated) fallback. The wrapper is generated per type because
-    # the storage width `iN` and the bounds must be baked into the IR as literals.
-    if VERSION >= v"1.12"
+    # identity wrapper that vanishes after inlining. The `range` attribute keyword was added in LLVM
+    # 19, so this is gated to Julia >= 1.13 (the first release bundling LLVM >= 19; Julia 1.12 ships
+    # LLVM 18, which rejects the attribute in textual IR). On older Julia the abstract
+    # plain-`reinterpret` `getindex` in `methods.jl` serves as the (unannotated) fallback. The
+    # wrapper is generated per type because the storage width `iN` and the bounds must be baked into
+    # the IR as literals. The `v"1.13.0-"` bound includes 1.13 prereleases (which already ship LLVM
+    # >= 19), since a plain `v"1.13"` would sort after them and disable the path on those builds.
+    if VERSION >= v"1.13.0-"
         N = t.storage_bits
         L = t.logical_bits
         S = t.storage_type

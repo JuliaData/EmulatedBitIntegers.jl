@@ -78,13 +78,14 @@ end
 @testset "range-annotated unwrap folds range-dependent comparisons" begin
     @emulate UInt3
     # `UInt3` has storage `UInt8` and logical range `[0, 8)`, so the unwrapped storage value is
-    # always `< 8`. On Julia >= 1.12 the per-type `getindex` carries a `range(i8 0, 8)` return
+    # always `< 8`. On Julia >= 1.13 the per-type `getindex` carries a `range(i8 0, 8)` return
     # attribute, so LLVM proves the comparison and folds it to the constant `true` (`ret i8 1`),
-    # leaving no `icmp`. On older Julia the plain-`reinterpret` fallback lacks the annotation, so
-    # the comparison against a full-range `i8` argument survives as a single `icmp`.
+    # leaving no `icmp`. On older Julia (LLVM < 19, where the `range` attribute is unavailable) the
+    # plain-`reinterpret` fallback lacks the annotation, so the comparison against a full-range
+    # `i8` argument survives as a single `icmp`.
     always_true(x::UInt3) = x[] < UInt8(8)
     ir = sprint(io -> code_llvm(io, always_true, (UInt3,); debuginfo=:none))
-    if VERSION >= v"1.12"
+    if VERSION >= v"1.13.0-"
         @test count("icmp", ir) == 0
     else
         @test count("icmp", ir) == 1
