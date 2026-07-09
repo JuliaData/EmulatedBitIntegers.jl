@@ -59,6 +59,32 @@ function emulate(T::Symbol, t::IntegerType)
     """
     @push! Core.@doc $doc_T $T
 
+    # Range-annotated unwrap. Emit a per-type `getindex` whose result carries an LLVM
+    # `range(iN lo, hi)` return attribute advertising the invariant that the storage value always
+    # lies in the logical range `[minvalue, maxvalue]`. This lets LLVM fold range-dependent code at
+    # the use site for free — e.g. a user's `@boundscheck minvalue <= x <= maxvalue` collapses to
+    # nothing, and comparisons against out-of-range constants become compile-time constants. Unlike
+    # an `llvm.assume`, the attribute emits no instruction (no leftover call, no compile-time
+    # overhead, no risk of inhibiting other passes) — it is pure metadata on an `alwaysinline`
+    # identity wrapper that vanishes after inlining. The `range` attribute requires LLVM 18, so this
+    # is gated to Julia >= 1.12; on older versions the abstract plain-`reinterpret` `getindex` in
+    # `methods.jl` serves as the (unannotated) fallback. The wrapper is generated per type because
+    # the storage width `iN` and the bounds must be baked into the IR as literals.
+    if VERSION >= v"1.12"
+        N = t.storage_bits
+        L = t.logical_bits
+        S = t.storage_type
+        # Half-open `[lo, hi)`: unsigned `[0, 2^L)`, signed `[-2^(L-1), 2^(L-1))`. `big` keeps the
+        # decimal literals exact for storage widths beyond 64 bits.
+        lo, hi = t.signed ? (string(-(big(2)^(L - 1))), string(big(2)^(L - 1))) :
+                            ("0", string(big(2)^L))
+        getindex_ir = """
+            define range(i$N $lo, $hi) i$N @entry(i$N %x) alwaysinline {
+                ret i$N %x
+            }"""
+        @push! @inline Base.getindex(x::$T) = Base.llvmcall(($getindex_ir, "entry"), $S, Tuple{$S}, reinterpret($S, x))
+    end
+
     # Create the type with different signedness, but identical prefix and size, compared to the original type. This will only be done, if the other type is defined, too, and then the conversion methods for both directions are defined. In this sense we delay the definition of the conversion methods until the other type is defined.
     T_dual = t |> signdual |> Symbol
     T_signed, T_unsigned = t.signed ? (T, T_dual) : (T_dual, T)

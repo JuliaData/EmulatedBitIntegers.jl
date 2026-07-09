@@ -3,6 +3,7 @@ using EmulatedBitIntegers: IntegerType, nextpowerof2bytesize
 using Test
 using Pkg
 using BitIntegers
+using InteractiveUtils: code_llvm
 using IterTools: fieldvalues
 using JET: get_reports, report_package
 
@@ -72,6 +73,22 @@ end
     # The macro attaches a per-type docstring to the type binding so `help?> UInt9` resolves. Missing attachment would return the fallback "No documentation found".
     @test occursin("Construct an emulated integer of type `UInt9`", string(@doc UInt9))
     @test occursin("InexactError", string(@doc UInt9))
+end
+
+@testset "range-annotated unwrap folds range-dependent comparisons" begin
+    @emulate UInt3
+    # `UInt3` has storage `UInt8` and logical range `[0, 8)`, so the unwrapped storage value is
+    # always `< 8`. On Julia >= 1.12 the per-type `getindex` carries a `range(i8 0, 8)` return
+    # attribute, so LLVM proves the comparison and folds it to the constant `true` (`ret i8 1`),
+    # leaving no `icmp`. On older Julia the plain-`reinterpret` fallback lacks the annotation, so
+    # the comparison against a full-range `i8` argument survives as a single `icmp`.
+    always_true(x::UInt3) = x[] < UInt8(8)
+    ir = sprint(io -> code_llvm(io, always_true, (UInt3,); debuginfo=:none))
+    if VERSION >= v"1.12"
+        @test count("icmp", ir) == 0
+    else
+        @test count("icmp", ir) == 1
+    end
 end
 
 
