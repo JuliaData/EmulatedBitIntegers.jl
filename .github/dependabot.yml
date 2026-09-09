@@ -11,11 +11,6 @@ updates:
     schedule:
       interval: "weekly"
     ignore:
-      - dependency-name: "Aqua"
-      - dependency-name: "BitIntegers"
-      - dependency-name: "Documenter"
+      # Ignore itself so `path = ".."` in subdir/Project.toml doesn't trigger it
       - dependency-name: "EmulatedBitIntegers"
-      - dependency-name: "IterTools"
-      - dependency-name: "JET"
-      - dependency-name: "PrecompileTest"
 
