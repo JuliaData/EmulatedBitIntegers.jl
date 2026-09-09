@@ -40,6 +40,7 @@ include("IntegerType.jl")
 include("interface.jl")
 include("methods.jl")
 include("emulate.jl")
+include("reductions.jl")
 
 # `emulate` only builds an `Expr` (no `eval`), so calling it here exercises the macro pipeline without defining real types or polluting any module. Cover the four distinct branches: unsigned default-storage, signed default-storage, explicit non-default storage, and `redundant_storage_request` (suffix matches the default → produces a `const` alias).
 @compile_workload begin
