@@ -180,9 +180,27 @@ Base.signed(::Type{T})   where T<:EmulatedUnsigned = _signedness_counterpart_und
 Base.Unsigned(x::T)      where T<:EmulatedSigned   = _signedness_counterpart_undefined(T, :unsigned)
 Base.Signed(x::T)        where T<:EmulatedUnsigned = _signedness_counterpart_undefined(T, :signed)
 
-# Only `<` and `<=` are defined; Base derives `>`/`>=` from them (`>(x, y) = y < x`). Defining `>`/`>=` here would supersede their universal `Any` fallbacks and invalidate a large amount of precompiled Base code for no behavioral gain.
-for f in (:<, :<=)
-    @eval Base.$f(x::EmulatedInteger, y::EmulatedInteger) = $f(x[], y[])
+# Select value-preserving storage representations for efficient comparisons, allowing promotion within the delegated storage comparison. Mixed-sign primitive operands use the larger storage width's signed type when it holds both logical ranges, avoiding a separate sign test. Otherwise, retain the storage values and their comparison methods. Base derives the remaining integer comparisons from `==`, `<`, and `<=`. The emulated/emulated and BigInt methods resolve ambiguities with the mixed methods and Base's BigInt comparisons.
+@inline prepromote(x::Integer, y::Integer) = x[], y[]
+@inline prepromote(x::Unsigned, y::Signed) = reverse(prepromote(y, x))
+
+@inline function prepromote(x::Signed, y::Unsigned)
+    left, right = x[], y[]
+    isprimitivetype(typeof(left)) && isprimitivetype(typeof(right)) || return left, right
+    storage = sizeof(left) >= sizeof(right) ? typeof(left) : typeof(right)
+    bits(y) < 8sizeof(storage) || return left, right
+    target = signed(storage)
+    return left % target, right % target
+end
+
+for OP in (:(==), :<, :<=)
+    @eval begin
+        Base.$OP(x::EmulatedInteger, y::Integer) = $OP(prepromote(x, y)...)
+        Base.$OP(x::Integer, y::EmulatedInteger) = $OP(prepromote(x, y)...)
+        Base.$OP(x::EmulatedInteger, y::EmulatedInteger) = $OP(prepromote(x, y)...)
+        Base.$OP(x::EmulatedInteger, y::BigInt) = $OP(prepromote(x, y)...)
+        Base.$OP(x::BigInt, y::EmulatedInteger) = $OP(prepromote(x, y)...)
+    end
 end
 
 Base.hash(x::EmulatedInteger, h::UInt) = hash(x[], h)

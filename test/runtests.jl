@@ -15,6 +15,7 @@ values(x) = x |> fieldvalues |> collect
 @emulate(UInt1, Int1, UInt3, Int3, Int4, Int20)
 @emulate(UInt1_64, UInt3_64, Int4_8, Int4_16, Int7_16, Int20_32)
 
+include("comparisons.jl")
 
 # ============================================================================
 # Static analysis
