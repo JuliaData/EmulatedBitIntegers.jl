@@ -276,8 +276,14 @@ end
 # Promote with `AbstractFloat`: mirrors Base's policy for primitive integers (e.g. `Int128 + Float16(1) === Inf16`) — the float wins regardless of width, and the user accepts whatever precision/overflow loss that implies (so e.g. `UInt1023 + Float16(1)` is allowed and likely returns `Inf16`). Base's float/integer promote rules use concrete `Float{16,32,64}` plus `Union{Bool,IntN,UIntN,...}` of concrete integer types, none of which include `EmulatedInteger`, so no ambiguity with Base.
 Base.promote_rule(::Type{<:EmulatedInteger}, ::Type{F}) where F<:AbstractFloat = F
 
-# `length` of a unit range of emulated values: Base's `AbstractUnitRange` fallback computes `last - first + one(T)` in the element type, which wraps silently when the count exceeds `typemax(T)` (e.g. `length(UInt3(0):UInt3(7))` would give `UInt3(0)`). Subtract on the storage values, then cast to `Int` — same shape as Base's specialization for narrow primitive integers. Storage subtraction never overflows: the constructor guarantees `bits(T) < 8*sizeof(storagetypeof(T))`, so the range `[minvalue(T), maxvalue(T)]` is strictly narrower than the storage range. Final `Int(...)` throws `InexactError` if the count exceeds `typemax(Int)`, matching Base's behavior for `Int128`/`UInt128` ranges.
-Base.length(r::AbstractUnitRange{<:EmulatedInteger}) = last(r) < first(r) ? 0 : Int(last(r)[] - first(r)[]) + 1
+# Storage subtraction fits because the logical width is strictly smaller than the storage width. Return an Int count, rejecting oversized distances with InexactError and an overflowing final addition with OverflowError.
+function Base.length(r::AbstractUnitRange{T}) where T<:EmulatedInteger
+    if bits(T) < 8sizeof(Int) - 1
+        start, stop = first(r)[] % Int, last(r)[] % Int
+        return stop < start ? 0 : stop - start + 1
+    end
+    return last(r) < first(r) ? 0 : Base.Checked.checked_add(Int(last(r)[] - first(r)[]), 1)
+end
 
 Base.length(r::StepRange{<:EmulatedInteger}) = isempty(r) ? 0 : Int(Base.checked_length(first(r)[]:step(r)[]:last(r)[]))
 

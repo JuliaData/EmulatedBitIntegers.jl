@@ -740,6 +740,29 @@ end
     # High endpoints (> typemax(Int)) with a small count: must not throw `InexactError` on endpoint conversion.
     @test length(typemax(UInt129)-UInt129(2) : typemax(UInt129)) === 3
 
+    @testset "unit-range count boundaries" begin
+        @emulate Int62 UInt62 Int3_128 UInt3_128 Int63_128 UInt63_128
+        for Source in (Int3, UInt3, Int7, UInt7, Int62, UInt62, Int63, UInt63,
+                       Int129, UInt129, Int3_128, UInt3_128, Int63_128, UInt63_128, Int3_256, UInt3_256)
+            low, high = BigInt(typemin(Source)), BigInt(typemax(Source))
+            for count in (big(1), big(2), big(typemax(Int)) - 1, big(typemax(Int)),
+                          big(typemax(Int)) + 1, big(typemax(Int)) + 2, high - low + 1)
+                count <= high - low + 1 || continue
+                for start in (low, high - count + 1)
+                    actual = Source(start):Source(start + count - 1)
+                    if count <= typemax(Int)
+                        @test (@inferred length(actual)) === Int(count)
+                    elseif count == big(typemax(Int)) + 1
+                        @test_throws OverflowError length(actual)
+                    else
+                        @test_throws InexactError length(actual)
+                    end
+                end
+            end
+            @test (@inferred length(Source(high):Source(low))) === 0
+        end
+    end
+
     @testset "stepped ranges" begin
         for Source in (Int3, UInt3, Int7, UInt7, Int3_256, UInt3_256)
             low, high = Int(typemin(Source)), Int(typemax(Source))
