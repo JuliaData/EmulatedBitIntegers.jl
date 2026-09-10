@@ -276,7 +276,7 @@ end
 
 Base.hash(x::EmulatedInteger, h::UInt) = hash(x[], h)
 
-# Pick the wider type; on equal width the unsigned wins; on equal width and equal signedness return `Base.Bottom` so the user can install their own rule for that pair. `bits(T)` and `bits(Y)` are constant-returning trait calls, so the body folds to a single `if` ladder per concrete `(T, Y)` pair. User overrides like `promote_rule(::Type{UInt3}, ::Type{MyInt}) = …` are strictly more specific than this abstract method on both arguments and win dispatch.
+# Pick the wider logical type, then unsigned on equal width, then the larger storage for equally signed emulated types. Leave other ties unresolved so users can supply a rule for their types.
 function Base.promote_rule(::Type{T}, ::Type{Y}) where {T<:EmulatedInteger, Y<:Integer}
     if bits(T) > bits(Y)
         T
@@ -285,6 +285,8 @@ function Base.promote_rule(::Type{T}, ::Type{Y}) where {T<:EmulatedInteger, Y<:I
             T
         elseif T <: Signed && Y <: Unsigned
             Y
+        elseif Y <: EmulatedInteger && sizeof(T) != sizeof(Y)
+            sizeof(T) > sizeof(Y) ? T : Y
         else
             Base.Bottom
         end

@@ -552,6 +552,33 @@ end
     @test UInt14(82) + UInt8(14) === UInt14(96)
 end
 
+@testset "promote equal logical widths" begin
+    @emulate Int3 UInt3 Int3_128 UInt3_128 Int3_256 UInt3_256
+    for types in ((Int3, Int3_128, Int3_256), (UInt3, UInt3_128, UInt3_256))
+        for Left in types, Right in types
+            Target = sizeof(Left) >= sizeof(Right) ? Left : Right
+            @test (@inferred promote_type(Left, Right)) === Target
+            for value in (typemin(Left), typemax(Left))
+                left, right = value, Right(2)
+                @test (@inferred promote(left, right)) === (Target(left), Target(right))
+                for operation in (+, -, *, div, rem, mod)
+                    @test (@inferred operation(left, right)) === operation(BigInt(left), BigInt(right)) % Target
+                end
+            end
+        end
+    end
+    for Source in (Int3, Int3_128, Int3_256), Step in (UInt3, UInt3_128, UInt3_256)
+        for (start, stride, stop) in ((-4, 2, 2), (-4, 2, 3), (-4, 3, 3), (-1, 2, 3), (3, 2, -4), (-4, 2, -4))
+            actual = @inferred StepRange{Source,Step}(Source(start), Step(stride), Source(stop))
+            expected = start:stride:stop
+            @test first(actual) === Source(first(expected))
+            @test last(actual) === Source(last(expected))
+            @test step(actual) === Step(stride)
+            @test length(actual) === length(expected)
+        end
+    end
+end
+
 @testset "promote with AbstractFloat" begin
     @emulate UInt3 Int3
     @test promote_type(UInt3, Float64) === Float64
