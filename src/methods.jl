@@ -197,6 +197,24 @@ Base.Signed(x::T)        where T<:EmulatedUnsigned = _signedness_counterpart_und
     return left % target, right % target
 end
 
+@inline function prepromote(x::Integer, y::Float) where Float<:Base.IEEEFloat
+    storage = x[]
+    width = bits(x)
+    magnitude_bits = width - (x isa Signed)
+    if magnitude_bits <= precision(Float64)
+        storage = storage % (magnitude_bits <= 31 ? Int32 : Int64)
+        target = Float === Float64 || magnitude_bits > precision(Float32) ? Float64 : Float32
+        return target(storage), target(y)
+    end
+    storage isa Base.BitInteger && return storage, y
+    if width <= 128
+        target = width <= 8 ? Int8 : width <= 16 ? Int16 : width <= 32 ? Int32 : width <= 64 ? Int64 : Int128
+        return storage % (x isa Signed ? target : unsigned(target)), y
+    end
+    return BigInt(storage), y
+end
+@inline prepromote(x::Base.IEEEFloat, y::Integer) = reverse(prepromote(y, x))
+
 for OP in (:(==), :<, :<=)
     @eval begin
         Base.$OP(x::EmulatedInteger, y::Integer) = $OP(prepromote(x, y)...)
@@ -204,6 +222,8 @@ for OP in (:(==), :<, :<=)
         Base.$OP(x::EmulatedInteger, y::EmulatedInteger) = $OP(prepromote(x, y)...)
         Base.$OP(x::EmulatedInteger, y::BigInt) = $OP(prepromote(x, y)...)
         Base.$OP(x::BigInt, y::EmulatedInteger) = $OP(prepromote(x, y)...)
+        Base.$OP(x::EmulatedInteger, y::Base.IEEEFloat) = $OP(prepromote(x, y)...)
+        Base.$OP(x::Base.IEEEFloat, y::EmulatedInteger) = $OP(prepromote(x, y)...)
     end
 end
 
