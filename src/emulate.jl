@@ -85,7 +85,7 @@ function emulate(T::Symbol, t::IntegerType)
             define range(i$N $lo, $hi) i$N @entry(i$N %x) alwaysinline {
                 ret i$N %x
             }"""
-        @push! @inline Base.getindex(x::$T) = Base.llvmcall(($getindex_ir, "entry"), $S, Tuple{$S}, reinterpret($S, x))
+        @push! @inline Base.getindex(x::$T) = Base.@assume_effects :total Base.llvmcall(($getindex_ir, "entry"), $S, Tuple{$S}, reinterpret($S, x))
     end
 
     # Create the type with different signedness, but identical prefix and size, compared to the original type. This will only be done, if the other type is defined, too, and then the conversion methods for both directions are defined. In this sense we delay the definition of the conversion methods until the other type is defined.
