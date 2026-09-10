@@ -135,8 +135,7 @@ Base.count_zeros(x::T) where T<:EmulatedInteger = count_zeros(x[] | (~storagetyp
 # Shift the wasted high bits out, then count leading ones in the storage type. Works for both signednesses because after the shift, the bits that count are the same as the logical high bits.
 Base.leading_ones(x::T) where T<:EmulatedInteger = leading_ones(x[] << wastedbits(T)) % Int
 
-# `x[] % UInt8` matches Base's two's-complement reinterpretation convention and lowers to a single `reinterpret`/truncation for any storage type.
-Base.rem(x::EmulatedInteger, ::Type{UInt8}) = x[] % UInt8
+Base.rem(x::EmulatedInteger, Target::Base.BitIntegerType) = x[] % Target
 
 Base.:/(x::T, y::T) where T<:EmulatedInteger = x[] / y[] # Should result in Float64
 
@@ -155,6 +154,7 @@ Base.trailing_zeros(x::T) where T<:EmulatedInteger = trailing_zeros(x[] | (one(s
 Base.trailing_ones(x::EmulatedInteger) = x |> zext |> trailing_ones
 
 Base.AbstractFloat(x::EmulatedInteger) = x[] |> AbstractFloat
+Base.BigInt(x::EmulatedInteger) = BigInt(x[])
 
 # Promote to the regular primitive types resulting in InexactErrors if values are not representable.
 for B in Union{Base.BitInteger, Base.IEEEFloat} |> Base.uniontypes .|> Symbol
