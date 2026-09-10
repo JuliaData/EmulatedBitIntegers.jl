@@ -99,6 +99,33 @@ end
 end
 
 
+@testset "storage unwrap effects" begin
+    @emulate Int1 UInt1 Int7 UInt7 Int63 UInt63 Int129 UInt129 Int3_256 UInt3_256
+    for Source in (Int1, UInt1, Int7, UInt7, Int63, UInt63, Int129, UInt129, Int3_256, UInt3_256)
+        effects = Base.infer_effects(getindex, Tuple{Source})
+        expected = Base.infer_effects(getindex, Tuple{storagetypeof(Source)})
+        for property in (:consistent, :effect_free, :nothrow, :terminates)
+            @test getproperty(effects, property) === getproperty(expected, property)
+        end
+        if VERSION >= v"1.13.0-"
+            @test effects.noub === expected.noub
+        end
+    end
+    for Source in (Int7, UInt7), operation in (float, nextpow, prevpow)
+        arguments = operation === float ? Tuple{Source} : Tuple{Int, Source}
+        storage_arguments = operation === float ? Tuple{storagetypeof(Source)} : Tuple{Int, storagetypeof(Source)}
+        effects = Base.infer_effects(operation, arguments)
+        expected = Base.infer_effects(operation, storage_arguments)
+        for property in (:consistent, :effect_free, :nothrow, :terminates)
+            @test getproperty(effects, property) === getproperty(expected, property)
+        end
+        if VERSION >= v"1.13.0-"
+            @test effects.noub === expected.noub
+        end
+    end
+end
+
+
 # ============================================================================
 # Trait queries
 # ============================================================================
@@ -564,6 +591,8 @@ end
 
 @testset "integer exponent and powers of two" begin
     @emulate Int1 UInt1 Int3 UInt3 Int7 UInt7 Int63 UInt63 Int129 UInt129 Int3_256 UInt3_256 Int5_128
+    next_power_two(x) = nextpow(2, x)
+    previous_power_two(x) = prevpow(2, x)
     for Source in (Int1, UInt1, Int3, UInt3, Int7, UInt7, Int63, UInt63, Int129, UInt129, Int3_256, UInt3_256, Int5_128)
         low, high = BigInt(typemin(Source)), BigInt(typemax(Source))
         inputs = [low, high, big(0)]
@@ -578,14 +607,50 @@ end
             else
                 @test (@inferred exponent(x)) === ndigits(abs(value); base=2) - 1
             end
-            Source === Int5_128 && continue
             if value > 0
                 @test prevpow(2, x) === Source(prevpow(2, value))
                 @test nextpow(2, x) === nextpow(2, value) % Source
+                @test BigInt(prevpow(2, x)[]) == prevpow(2, value)
+                @test BigInt(nextpow(2, x)[]) == BigInt(nextpow(2, value) % Source)
+                if Source <: Signed
+                    @test (@inferred next_power_two(x)) === nextpow(2, value) % Source
+                    @test (@inferred previous_power_two(x)) === Source(prevpow(2, value))
+                end
             else
                 @test_throws DomainError prevpow(2, x)
                 @test_throws DomainError nextpow(2, x)
             end
+        end
+    end
+end
+
+@testset "public power dispatch" begin
+    @emulate Int7 UInt7 Int5_128
+    @test !isdefined(@__MODULE__, :UInt5_128)
+    for operation in (nextpow, prevpow), Source in (Int7, Int5_128)
+        effects = Base.infer_effects(operation, Tuple{Int, Source})
+        expected = Base.infer_effects(operation, Tuple{Int, storagetypeof(Source)})
+        for property in (:consistent, :effect_free, :nothrow, :terminates)
+            @test getproperty(effects, property) === getproperty(expected, property)
+        end
+        if VERSION >= v"1.13.0-"
+            for property in (:notaskstate, :inaccessiblememonly, :noub, :nortcall)
+                @test getproperty(effects, property) === getproperty(expected, property)
+            end
+        end
+        for base in (2, 2.0, UInt7(2), Int7(2)), value in (1, 3, 15)
+            x = Source(value)
+            @test operation(base, x) === operation(base, x[]) % Source
+        end
+        for base in (3, 3.0, UInt7(5), Int7(3)), value in (1, 3, 15)
+            x = Source(value)
+            @test operation(base, x) === operation(base, x[])
+        end
+        for base in (-2, 0, 1, 2, 3), value in (-1, 0)
+            @test_throws DomainError operation(base, Source(value))
+        end
+        for base in (-2, 0, 1)
+            @test_throws DomainError operation(base, Source(3))
         end
     end
 end
