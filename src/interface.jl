@@ -42,11 +42,11 @@ zext(x::Integer) = x
 """
     zext(T::Type{<:Integer}, x::Integer) -> T
 
-Zero-extend the integer `x` to the wider integer type `T`.
+Zero-extend the bit pattern of `x` to integer type `T`, whose logical width must be at least that of `x`.
 """
 function zext(T::Type{<:Integer}, x::Integer)
     T |> bits >= x |> typeof |> bits || lazy"$T must not be a type with less bits than the type of x" |> ArgumentError |> throw
-    reinterpret(T, convert(T |> unsigned, reinterpret(x |> zext |> typeof |> unsigned, x |> zext)))
+    reinterpret(x |> zext |> typeof |> unsigned, x |> zext) % T
 end
 
 # Zero-extension to the storage type. Unsigned storage is already clean. Signed storage is sign-extended, so mask off the wasted high bits; the mask `storagetypeof(T)(-1) >>> wastedbits(T)` folds to a literal.

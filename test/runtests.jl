@@ -151,6 +151,35 @@ end
     @test -1 |> Int8 |> zext === -1 |> Int8
     @test zext(UInt16, -1 |> Int4) === 0b1111 |> UInt16
     @test zext(UInt16, 2 |> UInt4) === 0b10 |> UInt16
+
+    @emulate Int1 Int1_128 UInt1 Int3 UInt3 Int3_128 UInt3_128 Int6_128 Int9 UInt9 Int129 UInt129
+    @test reinterpret(Int8, zext(Int3, UInt3(7))) === Int8(-1)
+    @test reinterpret(Int8, zext(Int3, Int3(-1))) === Int8(-1)
+    @test reinterpret(Int128, zext(Int3_128, UInt3(7))) === Int128(-1)
+    @test zext(Int9, Int3(-1)) === Int9(7)
+    @test zext(Int6_128, Int3(-1)) === Int6_128(7)
+    @test zext(Int8, UInt8(255)) === Int8(-1)
+
+    types = (Int1, Int1_128, UInt1, Int3, UInt3, Int3_128, UInt3_128, Int6_128,
+             Int8, UInt8, Int9, UInt9, Int128, UInt128, Int129, UInt129, Int256, UInt256)
+    for Source in types
+        inputs = bits(Source) <= 3 ? collect(BigInt(typemin(Source)):BigInt(typemax(Source))) :
+                 unique([BigInt(typemin(Source)), BigInt(typemin(Source)) + 1, big(0), big(1), BigInt(typemax(Source)) - 1, BigInt(typemax(Source))])
+        for Target in types, value in inputs
+            x = Source(value)
+            if bits(Target) < bits(Source)
+                @test_throws ArgumentError zext(Target, x)
+                continue
+            end
+            expected = value & ((big(1) << bits(Source)) - 1)
+            if Target <: Signed && expected >= big(1) << (bits(Target) - 1)
+                expected -= big(1) << bits(Target)
+            end
+            result = @inferred zext(Target, x)
+            @test typeof(result) === Target
+            @test reinterpret(storagetypeof(Target), result) === storagetypeof(Target)(expected)
+        end
+    end
 end
 
 
