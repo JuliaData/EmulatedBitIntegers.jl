@@ -163,6 +163,15 @@ Base.show(io::IO, x::T) where T<:EmulatedUnsigned = print(io, "0x", string(x[], 
 Base.show(io::IO, x::EmulatedSigned) = show(io, x[])
 
 Base.ndigits(x::EmulatedInteger; base::Integer=10, pad::Integer=1) = ndigits(x[]; base, pad)
+Base.string(x::EmulatedInteger; base::Integer=10, pad::Integer=1) = string(x[]; base, pad)
+
+function Base.exponent(x::EmulatedInteger)
+    iszero(x) && throw(DomainError(x, "cannot be zero"))
+    storage = abs(x[])
+    return 8sizeof(storage) - leading_zeros(storage) - 1
+end
+
+Base.top_set_bit(x::EmulatedUnsigned) = bits(x) - leading_zeros(x)
 
 # Per Julia convention, `sign` returns a value of the same type as its argument. The storage-level `sign` produces 0/1/-1, all of which round-trip through `% T` cleanly. The edge case `Int1` (range `{-1, 0}`) is fine too: a 1-bit signed type can never hold a positive value, so `sign(x[])` is always `0` or `-1` — never `+1` — and no modular wrap-around happens.
 Base.sign(x::T) where T<:EmulatedInteger = sign(x[]) % T

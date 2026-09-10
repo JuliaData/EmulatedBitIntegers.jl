@@ -562,6 +562,34 @@ end
     @test (~Int3(0))[] === Int8(-1)               # sign-extended
 end
 
+@testset "integer exponent and powers of two" begin
+    @emulate Int1 UInt1 Int3 UInt3 Int7 UInt7 Int63 UInt63 Int129 UInt129 Int3_256 UInt3_256 Int5_128
+    for Source in (Int1, UInt1, Int3, UInt3, Int7, UInt7, Int63, UInt63, Int129, UInt129, Int3_256, UInt3_256, Int5_128)
+        low, high = BigInt(typemin(Source)), BigInt(typemax(Source))
+        inputs = [low, high, big(0)]
+        for shift in 0:bits(Source), offset in (-1, 0, 1), sign in (-1, 1)
+            value = sign * ((big(1) << shift) + offset)
+            low <= value <= high && push!(inputs, value)
+        end
+        for value in unique(inputs)
+            x = Source(value)
+            if iszero(value)
+                @test_throws DomainError exponent(x)
+            else
+                @test (@inferred exponent(x)) === ndigits(abs(value); base=2) - 1
+            end
+            Source === Int5_128 && continue
+            if value > 0
+                @test prevpow(2, x) === Source(prevpow(2, value))
+                @test nextpow(2, x) === nextpow(2, value) % Source
+            else
+                @test_throws DomainError prevpow(2, x)
+                @test_throws DomainError nextpow(2, x)
+            end
+        end
+    end
+end
+
 @testset "logical right shift (>>>) and unsigned left shift" begin
     @emulate UInt3 Int3
     # Unsigned >>>: same as >>.
@@ -653,6 +681,25 @@ end
 # ============================================================================
 # Introspection / display
 # ============================================================================
+
+@testset "integer string formatting" begin
+    @emulate Int1 UInt1 Int3 UInt3 Int7 UInt7 Int5_128 Int129 UInt129
+    for Source in (Int1, UInt1, Int3, UInt3, Int7, UInt7, Int5_128, Int129, UInt129)
+        low, high = BigInt(typemin(Source)), BigInt(typemax(Source))
+        inputs = bits(Source) <= 7 ? collect(low:high) :
+                 [low, low + 1, big(0), big(1), high - 1, high]
+        for value in inputs, base in (-62, -36, -16, -10, -8, -3, -2, 2, 3, 8, 10, 16, 36, 62), pad in (0, 1, 7, 140)
+            @test string(Source(value); base, pad) == string(value; base, pad)
+        end
+        for base in (-63, -1, 0, 1, 63)
+            @test_throws DomainError string(zero(Source); base)
+        end
+    end
+    @test string(UInt3(7); base=16) == "7"
+    @test string(Int3(-4); base=-2) == "1100"
+    @test string(UInt1(1); base=2) == "1"
+    @test string(Int5_128(3)) == "3"
+end
 
 @testset "bitstring" begin
     @emulate UInt3 Int3
