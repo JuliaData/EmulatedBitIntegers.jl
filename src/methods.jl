@@ -65,6 +65,17 @@ Base.abs(x::T) where T<:EmulatedSigned = abs(x[]) % T
 # Storage-level `-x[]` already produces the bit pattern of the flipped sign value (no overflow for non-`typemin` inputs and the same wraparound as 2's complement for `typemin`); the `% T` cast re-cleans the wasted bits.
 Base.flipsign(x::T, y::Signed) where T<:EmulatedSigned = signbit(y) ? -x[] % T : x
 
+function Base.isqrt(x::T) where T<:EmulatedInteger
+    storage = x[]
+    storage isa Base.BitInteger && return isqrt(storage) % T
+    if bits(T) <= 128
+        target = bits(T) <= 64 ? Int64 : Int128
+        return isqrt(storage % (x isa Signed ? target : unsigned(target))) % T
+    end
+    signbit(storage) && throw(DomainError(x, "isqrt requires a nonnegative integer"))
+    return isqrt(BigInt(storage)) % T
+end
+
 # `c::Int` overload resolves a method-call ambiguity with Base's shift methods (which dispatch differently on `Int` vs. other `Integer`). For `c::Unsigned` we know the `>>` shift is non-negative: unsigned right-shift fills 0, signed arithmetic right-shift fills with the sign bit — both preserve the wasted-bit invariant, so `reinterpret` skips the modular reduction. The general `Integer`/`Int` paths must keep `% T` because a negative `c` turns into a left shift and dirties the wasted bits.
 Base.:<<(x::T, c::Unsigned) where T<:EmulatedInteger = (x[] << c) % T
 Base.:<<(x::T, c::Integer)  where T<:EmulatedInteger = (x[] << c) % T

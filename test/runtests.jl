@@ -10,6 +10,7 @@ using JET: get_reports, report_package
 integertype(s) = IntegerType(s, Main)
 values(x) = x |> fieldvalues |> collect
 @define_integers 24
+@define_integers 2048
 
 # Top-level emulated types reused across the testsets below. `@emulate` is idempotent, so individual testsets re-declare what they need locally for readability.
 @emulate(UInt1, Int1, UInt3, Int3, Int4, Int20)
@@ -438,6 +439,41 @@ end
     @test flipsign(Int3(3), Int3(-2)) === Int3(-3)
     @test flipsign(Int3(-4), Int3(1)) === Int3(-4)
     @test flipsign(Int3(-4), Int3(-2)) === Int3(-4)
+end
+
+@testset "isqrt" begin
+    @emulate Int1 UInt1 Int3 UInt3 Int7 UInt7 Int63 UInt63 Int65 UInt65 Int127 UInt127
+    @emulate Int20_24 UInt20_24 Int3_256 UInt3_256 Int64_256 UInt64_256 Int128_256 UInt128_256
+    @emulate Int129 UInt129 Int257 UInt257 Int1025 UInt1025
+
+    @test isqrt(Int63(2^62 - 2)) === Int63(2^31 - 1)
+    @test isqrt(Int129(big(2)^128 - 1)) === Int129(big(2)^64 - 1)
+
+    for Source in (Int1, UInt1, Int3, UInt3, Int7, UInt7, Int63, UInt63, Int65, UInt65,
+                   Int127, UInt127, Int20_24, UInt20_24, Int3_256, UInt3_256,
+                   Int64_256, UInt64_256, Int128_256, UInt128_256,
+                   Int129, UInt129, Int257, UInt257, Int1025, UInt1025)
+        high = BigInt(typemax(Source))
+        inputs = BigInt[0, high]
+        append!(inputs, 0:min(high, 127))
+        for shift in 0:div(bits(Source), 2), offset in (-1, 0, 1)
+            root = (big(1) << shift) + offset
+            for delta in (-1, 0, 1)
+                value = root^2 + delta
+                0 <= value <= high && push!(inputs, value)
+            end
+        end
+        for value in unique(inputs)
+            result = @inferred isqrt(Source(value))
+            @test result === Source(isqrt(value))
+            root = BigInt(result)
+            @test root^2 <= value < (root + 1)^2
+        end
+        if Source <: Signed
+            @test_throws DomainError isqrt(Source(-1))
+            @test_throws DomainError isqrt(typemin(Source))
+        end
+    end
 end
 
 
