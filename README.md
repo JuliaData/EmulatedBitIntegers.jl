@@ -128,6 +128,15 @@ const Int7_8 = Int7
 
 The signedness of data and storage types are always identical.
 
+When both packages are loaded, a package extension enables checked conversion
+from emulated integers to BitIntegers types, including user-defined types from
+`@define_integers`.
+
+```jldoctest usage
+julia> Int256(UInt3(7))
+7
+```
+
 If you want to `@emulate` multiple types, you can simply provide multiple arguments to the macro with regular macro syntax:
 
 ```jldoctest usage
