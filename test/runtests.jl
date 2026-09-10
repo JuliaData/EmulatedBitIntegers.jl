@@ -19,6 +19,7 @@ include("comparisons.jl")
 include("sums.jl")
 include("broadcasting.jl")
 include("bitintegers.jl")
+include("ndigits.jl")
 
 # ============================================================================
 # Static analysis

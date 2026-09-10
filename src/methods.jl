@@ -144,6 +144,8 @@ Base.:/(x::T, y::T) where T<:EmulatedInteger = x[] / y[] # Should result in Floa
 Base.show(io::IO, x::T) where T<:EmulatedUnsigned = print(io, "0x", string(x[], pad=hexdigits(T), base=16))
 Base.show(io::IO, x::EmulatedSigned) = show(io, x[])
 
+Base.ndigits(x::EmulatedInteger; base::Integer=10, pad::Integer=1) = ndigits(x[]; base, pad)
+
 # Per Julia convention, `sign` returns a value of the same type as its argument. The storage-level `sign` produces 0/1/-1, all of which round-trip through `% T` cleanly. The edge case `Int1` (range `{-1, 0}`) is fine too: a 1-bit signed type can never hold a positive value, so `sign(x[])` is always `0` or `-1` — never `+1` — and no modular wrap-around happens.
 Base.sign(x::T) where T<:EmulatedInteger = sign(x[]) % T
 Base.signbit(x::EmulatedInteger) = x[] |> signbit
