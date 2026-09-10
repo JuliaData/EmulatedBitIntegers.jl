@@ -617,12 +617,45 @@ end
 end
 
 @testset "range length" begin
-    @emulate UInt3 UInt129
+    @emulate Int3 UInt3 Int7 UInt7 Int63 UInt63 Int129 UInt129 Int3_256 UInt3_256
     @test length(UInt3(1):UInt3(3)) === 3       # Int, not UInt3.
     @test length(UInt3(0):UInt3(7)) === 8       # would wrap to 0 with element-typed result.
     @test length(UInt3(3):UInt3(2)) === 0       # empty range.
     # High endpoints (> typemax(Int)) with a small count: must not throw `InexactError` on endpoint conversion.
     @test length(typemax(UInt129)-UInt129(2) : typemax(UInt129)) === 3
+
+    @testset "stepped ranges" begin
+        for Source in (Int3, UInt3, Int7, UInt7, Int3_256, UInt3_256)
+            low, high = Int(typemin(Source)), Int(typemax(Source))
+            for (start, stride, stop) in ((low, 1, high), (low, 2, high), (high, 1, low),
+                                          (high, -1, low), (high, -2, low), (low, -1, high),
+                                          (low, 1, low), (high, -1, high))
+                for stepvalue in (stride, Int16(stride), big(stride))
+                    actual = StepRange{Source,typeof(stepvalue)}(Source(start), stepvalue, Source(stop))
+                    expected = start:stride:stop
+                    @test (@inferred length(actual)) === length(expected)
+                    @test Int.(collect(actual)) == collect(expected)
+                end
+                if typemin(Source) <= stride <= typemax(Source)
+                    actual = Source(start):Source(stride):Source(stop)
+                    expected = start:stride:stop
+                    @test (@inferred length(actual)) === length(expected)
+                    @test Int.(collect(actual)) == collect(expected)
+                end
+            end
+        end
+        for Source in (Int129, UInt129), endpoint in (typemin(Source), typemax(Source))
+            stride = endpoint == typemin(Source) ? 2 : -2
+            start = BigInt(endpoint)
+            actual = endpoint:stride:Source(start + 4stride)
+            @test (@inferred length(actual)) === 5
+            @test BigInt.(collect(actual)) == collect(start:stride:start + 4stride)
+        end
+        for Source in (Int63, UInt63)
+            actual = typemin(Source):Source(1):typemax(Source)
+            @test_throws Union{OverflowError,InexactError} length(actual)
+        end
+    end
 end
 
 @testset "iseven / isodd" begin

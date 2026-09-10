@@ -252,6 +252,7 @@ Base.promote_rule(::Type{<:EmulatedInteger}, ::Type{F}) where F<:AbstractFloat =
 # `length` of a unit range of emulated values: Base's `AbstractUnitRange` fallback computes `last - first + one(T)` in the element type, which wraps silently when the count exceeds `typemax(T)` (e.g. `length(UInt3(0):UInt3(7))` would give `UInt3(0)`). Subtract on the storage values, then cast to `Int` — same shape as Base's specialization for narrow primitive integers. Storage subtraction never overflows: the constructor guarantees `bits(T) < 8*sizeof(storagetypeof(T))`, so the range `[minvalue(T), maxvalue(T)]` is strictly narrower than the storage range. Final `Int(...)` throws `InexactError` if the count exceeds `typemax(Int)`, matching Base's behavior for `Int128`/`UInt128` ranges.
 Base.length(r::AbstractUnitRange{<:EmulatedInteger}) = last(r) < first(r) ? 0 : Int(last(r)[] - first(r)[]) + 1
 
+Base.length(r::StepRange{<:EmulatedInteger}) = isempty(r) ? 0 : Int(Base.checked_length(first(r)[]:step(r)[]:last(r)[]))
 
 # Uniform random sampling: draw a uniform storage value and re-clean via `% T`. Each logical value gets exactly `2^wastedbits(T)` storage preimages (one for each combination of the wasted bits), so the resulting distribution is uniform over `[minvalue(T), maxvalue(T)]` for both signed and unsigned types.
 Base.rand(rng::Random.AbstractRNG, ::Random.SamplerType{T}) where T<:EmulatedInteger = rand(rng, storagetypeof(T)) % T
