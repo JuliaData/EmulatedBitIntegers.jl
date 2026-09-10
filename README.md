@@ -139,6 +139,29 @@ If you `@emulate` an already defined type, nothing will be done (not even any ou
 Zero-bit types are rejected: `@emulate Int0` and `@emulate UInt0` throw an
 `ArgumentError`, since a 0-bit integer carries no information.
 
+## Summation
+
+General `sum` reductions widen emulated integers whose logical width is less
+than the machine word size to `Int` or `UInt`, according to signedness. This
+also applies to types with explicitly oversized storage. Wider emulated
+integers retain their type and modular arithmetic.
+
+```julia
+@emulate Int3
+sum(Int3[3, 3]) # 6 :: Int, without overflowing Int3
+```
+
+This behavior supports arrays, mapped sums, and iterators, including nonempty
+containers with abstract or union element types. Empty same-signed unions of
+small emulated types also produce a machine-word zero. Containers without a
+suitable empty identity still require `init`. Specialized range sums retain
+Base's range behavior.
+
+Support on current Julia releases uses private Base reduction hooks. A
+compatibility check verifies their availability and built-in widening behavior
+before installing the extensions during precompilation. Incompatible hooks
+cause an explicit error rather than silently disabling widening.
+
 ## Querying and converting types
 
 The package exposes a few helpers usable on both emulated and standard integers.
