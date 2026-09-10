@@ -130,10 +130,14 @@ The signedness of data and storage types are always identical.
 
 When both packages are loaded, a package extension enables checked conversion
 from emulated integers to BitIntegers types, including user-defined types from
-`@define_integers`.
+`@define_integers`. Modular conversion with `x % T` wraps to the destination
+range instead of throwing for out-of-range values.
 
 ```jldoctest usage
 julia> Int256(UInt3(7))
+7
+
+julia> UInt3(7) % Int256
 7
 ```
 
