@@ -477,6 +477,32 @@ end
 # Bit counting
 # ============================================================================
 
+@testset "leading_zeros / leading_ones" begin
+    @emulate Int1 UInt1 Int3 UInt3 Int3_128 UInt3_128 Int129 UInt129
+
+    @test leading_zeros(typemin(Int129)) === 0
+    for Source in (Int1, UInt1, Int3, UInt3, Int3_128, UInt3_128)
+        for value in Int(typemin(Source)):Int(typemax(Source))
+            x = Source(value)
+            expected = length(collect(Iterators.takewhile(==('0'), bitstring(x))))
+            @test (@inferred leading_zeros(x)) === expected
+            expected_ones = length(collect(Iterators.takewhile(==('1'), bitstring(x))))
+            @test (@inferred leading_ones(x)) === expected_ones
+        end
+    end
+    for Source in (Int129, UInt129)
+        @test (@inferred leading_zeros(zero(Source))) === 129
+        @test (@inferred leading_ones(zero(Source))) === 0
+        @test (@inferred leading_ones(~zero(Source))) === 129
+        @test leading_zeros(typemax(Source)) === (Source <: Signed ? 1 : 0)
+        for shift in 0:127
+            @test (@inferred leading_zeros(Source(big(1) << shift))) === 128 - shift
+            @test (@inferred leading_ones(~Source(big(1) << shift))) === 128 - shift
+        end
+    end
+    @test leading_zeros(Int129(-1)) === 0
+end
+
 @testset "count_ones / count_zeros" begin
     @test UInt3(0b101) |> count_ones === 2
     @test UInt3(0b101) |> count_zeros === 1

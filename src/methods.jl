@@ -124,16 +124,16 @@ Base.typemax(::Type{T}) where T<:EmulatedInteger = reinterpret(T, maxvalue(T))
 # Anchor the multiplicative identity on `oneunit` rather than `one`. Both break the `one`/`oneunit` mutual recursion, but `oneunit` has far fewer precompiled callers in Base's numeric code, so it invalidates a much smaller backedge set.
 Base.oneunit(::Type{T}) where T<:EmulatedInteger = reinterpret(T, T |> storagetypeof |> one)
 
-# Storage has `wastedbits(T)` extra zero (unsigned) or sign-extension (signed) bits at the top; subtract them to get the logical leading-zero count.
-Base.leading_zeros(x::T) where T<:EmulatedInteger = (leading_zeros(x[]) - wastedbits(T)) % Int
+# Filling low bits caps the zero-input count at the logical width without a branch.
+Base.leading_zeros(x::T) where T<:EmulatedSigned = leading_zeros(x[] << wastedbits(T) | ~zero(x[]) >>> bits(T)) % Int
+# Unsigned storage has exactly wastedbits(T) extra leading zeros.
+Base.leading_zeros(x::T) where T<:EmulatedUnsigned = (leading_zeros(x[]) - wastedbits(T)) % Int
+Base.leading_ones(x::T) where T<:EmulatedInteger = leading_ones(x[] << wastedbits(T)) % Int
 
 # Mask off the wasted high bits via `zext`, then count ones. Unsigned `zext` is a no-op; signed `zext` masks the sign-extension away, so a single uniform formula serves both.
 Base.count_ones(x::EmulatedInteger) = count_ones(zext(x))
 # Set the wasted high bits to 1 with an OR, then count zeros directly. Mirrors `count_ones`/`zext` but saves a subtraction; the mask folds to a literal (and is `0` for `bits == storagebits`, making the OR a no-op).
 Base.count_zeros(x::T) where T<:EmulatedInteger = count_zeros(x[] | (~storagetypeof(T)(0) << bits(T)))
-
-# Shift the wasted high bits out, then count leading ones in the storage type. Works for both signednesses because after the shift, the bits that count are the same as the logical high bits.
-Base.leading_ones(x::T) where T<:EmulatedInteger = leading_ones(x[] << wastedbits(T)) % Int
 
 Base.rem(x::EmulatedInteger, Target::Base.BitIntegerType) = x[] % Target
 
