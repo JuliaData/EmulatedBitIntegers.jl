@@ -829,6 +829,51 @@ end
     end
 
     @testset "stepped ranges" begin
+        @emulate Int257 UInt257
+        @emulate Int62_128 UInt62_128 Int63_128 UInt63_128
+        for Source in (Int62, UInt62, Int62_128, UInt62_128, Int63_128, UInt63_128)
+            actual = StepRange{Source,Int}(typemin(Source), 1, typemax(Source))
+            count = big(1) << bits(Source)
+            if count <= typemax(Int)
+                @test (@inferred length(actual)) === Int(count)
+            elseif count == big(typemax(Int)) + 1
+                @test_throws OverflowError length(actual)
+            else
+                @test_throws InexactError length(actual)
+            end
+        end
+        for Source in (Int3, Int7, Int3_256), Step in (UInt8, UInt128, BitIntegers.UInt256)
+            for start in (Int(typemin(Source)), -1, 0), stop in (0, Int(typemax(Source))), stride in (1, 2, 3)
+                actual = StepRange{Source,Step}(Source(start), Step(stride), Source(stop))
+                expected = start:stride:stop
+                @test (@inferred length(actual)) === length(expected)
+            end
+        end
+        for Source in (Int257, UInt257), Step in (Int8, Int, Int128, BitIntegers.Int256)
+            stride = typemin(Step)
+            distance = -2BigInt(stride)
+            start = Source <: Signed ? big(0) : distance
+            actual = StepRange{Source,Step}(Source(start), stride, Source(start - distance))
+            @test (@inferred length(actual)) === 3
+            singleton = StepRange{Source,Step}(Source(start), stride, Source(start))
+            @test (@inferred length(singleton)) === 1
+            empty = StepRange{Source,Step}(Source(start - distance), stride, Source(start))
+            @test (@inferred length(empty)) === 0
+        end
+        for Source in (Int129, UInt129), stride in (-2, 2)
+            for count in (big(typemax(Int)), big(typemax(Int)) + 1, big(typemax(Int)) + 2)
+                distance = 2(count - 1)
+                start, stop = stride > 0 ? (big(0), distance) : (distance, big(0))
+                actual = StepRange{Source,Int}(Source(start), stride, Source(stop))
+                if count <= typemax(Int)
+                    @test (@inferred length(actual)) === Int(count)
+                elseif count == big(typemax(Int)) + 1
+                    @test_throws OverflowError length(actual)
+                else
+                    @test_throws InexactError length(actual)
+                end
+            end
+        end
         for Source in (Int3, UInt3, Int7, UInt7, Int3_256, UInt3_256)
             low, high = Int(typemin(Source)), Int(typemax(Source))
             for (start, stride, stop) in ((low, 1, high), (low, 2, high), (high, 1, low),

@@ -305,7 +305,18 @@ function Base.length(r::AbstractUnitRange{T}) where T<:EmulatedInteger
     return last(r) < first(r) ? 0 : Base.Checked.checked_add(Int(last(r)[] - first(r)[]), 1)
 end
 
-Base.length(r::StepRange{<:EmulatedInteger}) = isempty(r) ? 0 : Int(Base.checked_length(first(r)[]:step(r)[]:last(r)[]))
+function Base.length(r::StepRange{T}) where T<:EmulatedInteger
+    isempty(r) && return 0
+    start, stop = first(r)[], last(r)[]
+    stride = step(r)[]
+    distance = stride < 0 ? start - stop : stop - start
+    magnitude = stride isa Signed && isbitstype(typeof(stride)) ? unsigned(abs(stride)) : abs(stride)
+    intervals = div(distance, magnitude)
+    if stride isa Integer && bits(T) < 8sizeof(Int) - 1
+        return (intervals % Int) + 1
+    end
+    return Base.Checked.checked_add(Int(intervals), 1)
+end
 
 # Uniform random sampling: draw a uniform storage value and re-clean via `% T`. Each logical value gets exactly `2^wastedbits(T)` storage preimages (one for each combination of the wasted bits), so the resulting distribution is uniform over `[minvalue(T), maxvalue(T)]` for both signed and unsigned types.
 Base.rand(rng::Random.AbstractRNG, ::Random.SamplerType{T}) where T<:EmulatedInteger = rand(rng, storagetypeof(T)) % T
