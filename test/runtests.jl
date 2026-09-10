@@ -431,6 +431,39 @@ end
     @test lcm(UInt3(2), UInt3(3)) === UInt3(6)
 end
 
+@testset "checked division" begin
+    @emulate Int1 UInt1 Int3 UInt3 Int3_128 UInt3_128 Int63 UInt63 Int129 UInt129
+    for Source in (Int1, UInt1, Int3, UInt3, Int3_128, UInt3_128, Int63, UInt63, Int129, UInt129)
+        low, high = BigInt(typemin(Source)), BigInt(typemax(Source))
+        inputs = bits(Source) <= 3 ? collect(low:high) :
+                 unique([low, low + 1, big(-2), big(-1), big(0), big(1), big(2), high - 1, high])
+        filter!(value -> low <= value <= high, inputs)
+        for (checked, ordinary) in ((Base.Checked.checked_div, div),
+                                     (Base.Checked.checked_fld, fld),
+                                     (Base.Checked.checked_cld, cld))
+            for left in inputs, right in inputs
+                x, y = Source(left), Source(right)
+                if iszero(right)
+                    @test_throws DivideError checked(x, y)
+                else
+                    expected = ordinary(left, right)
+                    if low <= expected <= high
+                        @test (@inferred checked(x, y)) === Source(expected)
+                    else
+                        @test_throws DivideError checked(x, y)
+                        @test ordinary(x, y) === expected % Source
+                    end
+                end
+            end
+        end
+    end
+    for checked in (Base.Checked.checked_div, Base.Checked.checked_fld, Base.Checked.checked_cld)
+        @test (@inferred checked(typemin(Int3), Int8(-1))) === Int8(4)
+        @test (@inferred checked(Int8(-4), Int3(-1))) === Int8(4)
+        @test (@inferred checked(Int3(-3), Int63(-1))) === Int63(3)
+    end
+end
+
 @testset "flipsign" begin
     @emulate Int3
     @test flipsign(Int3(-2), Int3(-1)) === Int3(2)

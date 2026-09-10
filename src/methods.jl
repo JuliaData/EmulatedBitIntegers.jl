@@ -94,6 +94,13 @@ Base.Checked.checked_abs(x::EmulatedUnsigned) = x
 Base.Checked.checked_abs(x::T) where T<:EmulatedSigned =
     x == typemin(T) ? throw(OverflowError(lazy"checked arithmetic: cannot compute |x| for x = $x::$T")) : abs(x)
 
+for (checked, ordinary) in ((:checked_div, :div), (:checked_fld, :fld), (:checked_cld, :cld))
+    @eval function Base.Checked.$checked(x::T, y::T) where T<:EmulatedSigned
+        x == typemin(T) && y[] == -1 && throw(DivideError())
+        return $ordinary(x, y)
+    end
+end
+
 # `add_with_overflow` / `sub_with_overflow` / `mul_with_overflow` for emulated pairs: needed by `Base.Checked.checked_*` and `Base.lcm`. Each operator can have two problems: the storage operator may overflow (`overflow` flag), and the result may overflow into the wasted bits (`dirty` flag). The branches below are compile-time constants per `T` and fold to one of three regimes per call site.
 
 # `rem` (`% T`) into an emulated type, paired with a flag saying whether the wasted bits were dirty. Returning the wrapped value alongside the flag lets the caller reuse the cast it had to compute anyway.
