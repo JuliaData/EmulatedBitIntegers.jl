@@ -159,11 +159,28 @@ end
 # ============================================================================
 
 @testset "typemin / typemax / oneunit" begin
+    @emulate Int1 Int1_128 Int2 UInt1 UInt1_128 Int3 UInt3 Int129 UInt129
     @test typemin(Int4) == -8
     @test typemax(Int4) == 7
     @test typemax(UInt3) == 7
     @test typemin(UInt3) == 0
     @test oneunit(UInt3) === UInt3(1)
+    for Source in (Int1, Int1_128)
+        @test_throws InexactError oneunit(Source)
+        @test_throws InexactError one(Source)
+        for x in (typemin(Source), zero(Source))
+            @test_throws InexactError oneunit(x)
+            @test_throws InexactError one(x)
+        end
+    end
+    for Source in (Int2, UInt1, UInt1_128, Int3, UInt3, Int129, UInt129)
+        @test (@inferred oneunit(Source)) === Source(1)
+        @test (@inferred one(Source)) === Source(1)
+        for x in (typemin(Source), zero(Source), typemax(Source))
+            @test (@inferred oneunit(x)) === Source(1)
+            @test (@inferred one(x)) === Source(1)
+        end
+    end
 end
 
 @testset "Float to emulated / round / floor / ceil / trunc" begin

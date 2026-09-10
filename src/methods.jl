@@ -122,7 +122,7 @@ end
 Base.typemin(::Type{T}) where T<:EmulatedInteger = reinterpret(T, minvalue(T))
 Base.typemax(::Type{T}) where T<:EmulatedInteger = reinterpret(T, maxvalue(T))
 # Anchor the multiplicative identity on `oneunit` rather than `one`. Both break the `one`/`oneunit` mutual recursion, but `oneunit` has far fewer precompiled callers in Base's numeric code, so it invalidates a much smaller backedge set.
-Base.oneunit(::Type{T}) where T<:EmulatedInteger = reinterpret(T, T |> storagetypeof |> one)
+Base.oneunit(::Type{T}) where T<:EmulatedInteger = T(1)
 
 # Filling low bits caps the zero-input count at the logical width without a branch.
 Base.leading_zeros(x::T) where T<:EmulatedSigned = leading_zeros(x[] << wastedbits(T) | ~zero(x[]) >>> bits(T)) % Int
