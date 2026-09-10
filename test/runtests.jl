@@ -17,6 +17,7 @@ values(x) = x |> fieldvalues |> collect
 
 include("comparisons.jl")
 include("sums.jl")
+include("broadcasting.jl")
 
 # ============================================================================
 # Static analysis

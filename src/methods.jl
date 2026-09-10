@@ -3,6 +3,8 @@
 # Unwrap to the storage value. The macro installs a `storagetypeof(::Type{T}) = <storage_type>` constant-returning method per emulated type, so this folds to a single `reinterpret`. On Julia >= 1.13, `@emulate` additionally installs a per-type, `range`-annotated `getindex` (see `emulate.jl`) that is strictly more specific and wins dispatch; this abstract method then only serves as the fallback on older Julia (LLVM < 19, where the `range` attribute is unavailable).
 Base.getindex(x::EmulatedInteger) = reinterpret(x |> typeof |> storagetypeof, x)
 
+Base.broadcastable(x::EmulatedInteger) = Ref(x)
+
 # Value form returns a wider value (the unwrapped storage int); type form returns the storage type. Both routed through the per-type `storagetypeof` trait.
 Base.widen(x::EmulatedInteger) = x[]
 Base.widen(::Type{T}) where T<:EmulatedInteger = storagetypeof(T)
