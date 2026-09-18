@@ -459,6 +459,36 @@ end
     @test lcm(UInt3(2), UInt3(3)) === UInt3(6)
 end
 
+@testset "storage-backed gcd" begin
+    @emulate Int1 UInt1 Int3 UInt3 Int7 UInt7 Int20_24 UInt20_24 Int63 UInt63 Int3_128 UInt3_128 Int3_256 UInt3_256 Int128_256 UInt128_256 Int129 UInt129 Int257 UInt257 Int6_128
+    for Source in (Int1, UInt1, Int3, UInt3, Int7, UInt7, Int20_24, UInt20_24,
+                   Int63, UInt63, Int3_128, UInt3_128, Int3_256, UInt3_256,
+                   Int128_256, UInt128_256, Int129, UInt129, Int257, UInt257, Int6_128)
+        low, high = BigInt(typemin(Source)), BigInt(typemax(Source))
+        inputs = bits(Source) <= 3 ? collect(low:high) :
+                 unique([low, low + 1, big(-2), big(-1), big(0), big(1), big(2), high - 1, high])
+        filter!(value -> low <= value <= high, inputs)
+        for left in inputs, right in inputs
+            expected = gcd(left, right)
+            if expected <= high
+                result = @inferred gcd(Source(left), Source(right))
+                @test result === Source(expected)
+                @test BigInt(result[]) == expected
+            else
+                @test_throws OverflowError gcd(Source(left), Source(right))
+            end
+        end
+    end
+    @test (@inferred gcd(typemin(Int3), Int8(0))) === Int8(4)
+    @test (@inferred gcd(Int8(0), typemin(Int3))) === Int8(4)
+    @test (@inferred gcd(Int3(-4), Int63(6))) === Int63(2)
+    @test (@inferred gcd(UInt3(6), UInt3_256(4))) === UInt3_256(2)
+    @test gcd(Int7(-12), Int7(18), Int7(9)) === Int7(3)
+    @test lcm(Int7(-6), Int7(9)) === Int7(18)
+    @test lcm(typemin(Int7), Int7(0)) === Int7(0)
+    @test_throws OverflowError lcm(typemin(Int7), Int7(1))
+end
+
 @testset "checked division" begin
     @emulate Int1 UInt1 Int3 UInt3 Int3_128 UInt3_128 Int63 UInt63 Int129 UInt129
     for Source in (Int1, UInt1, Int3, UInt3, Int3_128, UInt3_128, Int63, UInt63, Int129, UInt129)

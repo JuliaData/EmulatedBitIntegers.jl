@@ -90,7 +90,13 @@ Base.:>>>(x::T, c::Unsigned) where T<:EmulatedInteger = (zext(x) >>> c) % T
 Base.:>>>(x::T, c::Integer)  where T<:EmulatedInteger = (zext(x) >>> c) % T
 Base.:>>>(x::T, c::Int)      where T<:EmulatedInteger = (zext(x) >>> c) % T
 
-# `Base.gcd`/`lcm` route through `checked_abs`. Unsigned: identity (no overflow possible since `abs` of a non-negative value is itself). Signed: throws `OverflowError` on `typemin(T)` (where `-typemin == typemin` would silently wrap in 2's complement), else plain `abs`.
+function Base.gcd(x::T, y::T) where T<:EmulatedInteger
+    result = gcd(x[], y[])
+    result <= typemax(T)[] || throw(OverflowError("gcd result is not representable"))
+    return reinterpret(T, result)
+end
+
+# `lcm` needs `checked_abs` to reject the unrepresentable magnitude of signed `typemin(T)`.
 Base.Checked.checked_abs(x::EmulatedUnsigned) = x
 Base.Checked.checked_abs(x::T) where T<:EmulatedSigned =
     x == typemin(T) ? throw(OverflowError(lazy"checked arithmetic: cannot compute |x| for x = $x::$T")) : abs(x)
