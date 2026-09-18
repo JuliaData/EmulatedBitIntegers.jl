@@ -31,15 +31,44 @@ function convert_storage(::Type{T}, x::Integer) where T<:EmulatedInteger
 end
 
 function convert_storage(::Type{T}, x::Base.IEEEFloat) where T<:EmulatedInteger
-    width = bits(T)
-    width <= 128 || return invoke(convert_storage, Tuple{Type{T}, Real}, T, x)
-    bound = ldexp(one(x), width - (T <: Signed))
-    lower = T <: Signed ? -bound : zero(x)
-    lower <= x < bound && isinteger(x) || throw_inexact(T, x)
-    native = Base.BitSigned_types |> filter(T -> width <= bits(T)) |> first
-    # The checks ensure x is integral and fits T, so it also fits the selected native type.
-    storage = unsafe_trunc(T <: Signed ? native : unsigned(native), x)
-    return storage % storagetypeof(T)
+    isinteger(x) || throw_inexact(T, x)
+    return trunc(T, x)[]
+end
+
+function Base.trunc(::Type{T}, x::Float) where {T<:EmulatedInteger, Float<:Base.IEEEFloat}
+    bound = ldexp(oneunit(x), bits(T) - (T <: Signed))
+    lower_ok = if T <: Unsigned
+        -oneunit(x) < x
+    elseif bits(T) <= precision(Float)
+        -bound - oneunit(x) < x
+    else
+        -bound <= x
+    end
+    lower_ok && x < bound && isfinite(x) || throw_inexact(T, x)
+    return unsafe_trunc(T, x)
+end
+
+"""
+    unsafe_trunc(T::Type{<:EmulatedInteger}, x::Union{Float16, Float32, Float64})
+
+Truncate `x` toward zero as `T`, requiring the truncated value to be representable in `T`.
+"""
+function Base.unsafe_trunc(::Type{T}, x::Float) where {S, T<:EmulatedInteger{S}, Float<:Base.IEEEFloat}
+    width = min(bits(T), exponent(floatmax(Float)) + 1 + (T <: Signed))
+    if width <= 128
+        native = Base.BitSigned_types |> filter(Native -> width <= bits(Native)) |> first
+        storage = unsafe_trunc(T <: Signed ? native : unsigned(native), x)
+        return reinterpret(T, storage % S)
+    end
+    raw = reinterpret(Unsigned, x)
+    fraction_bits = precision(Float) - 1
+    exponent_bits = 8sizeof(Float) - precision(Float)
+    shift = Int(raw >> fraction_bits) & (2^exponent_bits - 1) - (2^(exponent_bits - 1) - 1 + fraction_bits)
+    implicit_bit = oneunit(raw) << fraction_bits
+    significand = raw & (implicit_bit - oneunit(raw)) | implicit_bit
+    significand >>= unsigned(max(-shift, 0))
+    storage = (T <: Signed ? flipsign(signed(significand), x) : significand) % S
+    return reinterpret(T, storage << unsigned(max(shift, 0)))
 end
 
 """
