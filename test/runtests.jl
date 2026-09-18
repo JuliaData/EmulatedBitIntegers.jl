@@ -18,6 +18,7 @@ values(x) = x |> fieldvalues |> collect
 
 include("constructors.jl")
 include("widening.jl")
+include("widemul.jl")
 include("comparisons.jl")
 include("sums.jl")
 include("broadcasting.jl")

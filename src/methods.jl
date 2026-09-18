@@ -8,6 +8,28 @@ Base.broadcastable(x::EmulatedInteger) = Ref(x)
 Base.widen(x::T) where T<:EmulatedInteger = convert(widen(T), x[])
 Base.widen(::Type{T}) where {S, T<:EmulatedInteger{S}} = S
 
+function widemul_storage(x::Integer, y::Integer)
+    left, right = x[], y[]
+    isprimitivetype(typeof(left)) && isprimitivetype(typeof(right)) || return widemul(left, right)
+    width = bits(x) + bits(y)
+    S = sizeof(left) >= sizeof(right) ? typeof(left) : typeof(right)
+    if width > bits(S)
+        width <= 128 || return widemul(left, right)
+        S = Base.BitSigned_types |> filter(Native -> width <= bits(Native)) |> first
+    end
+    target = x isa Signed || y isa Signed ? signed(S) : unsigned(S)
+    return (left % target) * (right % target)
+end
+
+for (Left, LeftEmulated) in ((Signed, EmulatedSigned), (Unsigned, EmulatedUnsigned)),
+    (Right, RightEmulated) in ((Signed, EmulatedSigned), (Unsigned, EmulatedUnsigned))
+    @eval begin
+        Base.widemul(x::$LeftEmulated, y::$Right) = widemul_storage(x, y)
+        Base.widemul(x::$Left, y::$RightEmulated) = widemul_storage(x, y)
+        Base.widemul(x::$LeftEmulated, y::$RightEmulated) = widemul_storage(x, y)
+    end
+end
+
 # `Base.tryparse_internal(::Type{T<:Integer}, ...)` accumulates digits in `T` itself, requiring `T(base)` to be representable. For narrow emulated types (e.g. `UInt3`, max 7) `T(10)` throws `InexactError` and parsing of any decimal string fails. Route through the storage type which always fits `base`, then range-check into `T`: `parse` delegates to Base's `parse` (which raises `ArgumentError` for malformed input and `OverflowError` if even the storage type overflows) and then range-checks, throwing `OverflowError` for the well-formed-but-out-of-`T`-range case; `tryparse` mirrors it via `tryparse`, returning `nothing` for both malformed input and out-of-range values per Base's no-throw contract.
 function Base.parse(::Type{T}, s::AbstractString; base::Union{Integer,Nothing}=nothing) where T<:EmulatedInteger
     v = parse(storagetypeof(T), s; base)
