@@ -8,6 +8,36 @@ Base.broadcastable(x::EmulatedInteger) = Ref(x)
 Base.widen(x::T) where T<:EmulatedInteger = convert(widen(T), x[])
 Base.widen(::Type{T}) where {S, T<:EmulatedInteger{S}} = S
 
+struct EmulatedMultiplicativeInverse{T<:EmulatedInteger, I} <: Base.MultiplicativeInverses.MultiplicativeInverse{T}
+    divisor::T
+    inverse::I
+end
+
+function Base.MultiplicativeInverses.multiplicativeinverse(divisor::EmulatedInteger)
+    iszero(divisor) && throw(ArgumentError("cannot compute a multiplicative inverse for zero"))
+    storage = divisor[]
+    inverse = storage isa Base.BitInteger ? Base.MultiplicativeInverses.multiplicativeinverse(storage) : storage
+    return EmulatedMultiplicativeInverse(divisor, inverse)
+end
+
+Base.div(value::T, inverse::EmulatedMultiplicativeInverse{T}) where T = div(value[], inverse.inverse) % T
+
+if VERSION < v"1.11-"
+    function Base.mod(value::T, inverse::EmulatedMultiplicativeInverse{T}) where T
+        remainder = rem(value, inverse)
+        return iszero(remainder) || signbit(remainder) == signbit(inverse.divisor) ? remainder : remainder + inverse.divisor
+    end
+else
+    Base.mod(value::T, inverse::EmulatedMultiplicativeInverse{T}) where T = mod(value[], inverse.inverse) % T
+end
+
+if isdefined(Base, :_powermod_mi_legal)
+    function Base._powermod_mi_legal(modulus::T) where {S, T<:EmulatedUnsigned{S}}
+        S <: Base.BitInteger && bits(T) <= 64 && return false
+        return invoke(Base._powermod_mi_legal, Tuple{Unsigned}, modulus)
+    end
+end
+
 function widemul_storage(x::Integer, y::Integer)
     left, right = x[], y[]
     isprimitivetype(typeof(left)) && isprimitivetype(typeof(right)) || return widemul(left, right)
