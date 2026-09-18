@@ -76,6 +76,23 @@ end
     end
 end
 
+@testset "subtraction arity" begin
+    @emulate Int7 UInt7 Int6 UInt6 Int5 UInt5 Int3_128 UInt3_128 Int3_256 UInt3_256
+    for Source in (Int7, UInt7, Int6, UInt6, Int5, UInt5,
+                   Int3_128, UInt3_128, Int3_256, UInt3_256)
+        for arity in 3:9
+            operands = ntuple(_ -> zero(Source), arity)
+            @test !applicable(-, operands...)
+            @test_throws MethodError -(operands...)
+        end
+        extremes = (typemin(Source), zero(Source), typemax(Source))
+        for first in extremes, second in extremes, third in extremes
+            exact = BigInt(first) - BigInt(second) - BigInt(third)
+            @test (@inferred first - second - third) === exact % Source
+        end
+    end
+end
+
 @testset "rejected macro inputs" begin
     # Zero-bit integers fail the `1 <= logical_bits < storage_bits` check in `IntegerType`.
     @test_throws ArgumentError @macroexpand @emulate Int0

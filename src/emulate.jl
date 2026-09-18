@@ -103,14 +103,12 @@ function emulate(T::Symbol, t::IntegerType)
 
     # Sums of up to `2^wastedbits` operands fit the storage type, so the arity limit is per-type.
     # Cap the exponent to avoid overflow and generate methods for at most eight operands.
-    for OP ∈ (:+, :-)
-        for k = 3 : 2^min(wastedbits(t), 3)
-            # The following code builds the variable length form of
-            # "@eval M Base.$OP(x1::$T, x2::$T, x3::$T) = $OP(x1[], x2[], x3[]) % $T"
-            lhs = Expr(:call, :(Base.$OP), map(n -> :($(Symbol("x", n))::$T), 1:k)...)
-            rhs = Expr(:call, OP, map(n -> :($(Symbol("x", n))[]), 1:k)...)
-            @push! $lhs = $rhs % $T
-        end
+    for k = 3 : 2^min(wastedbits(t), 3)
+        # The following code builds the variable length form of
+        # "Base.:+(x1::$T, x2::$T, x3::$T) = +(x1[], x2[], x3[]) % $T"
+        lhs = Expr(:call, :(Base.:+), map(n -> :($(Symbol("x", n))::$T), 1:k)...)
+        rhs = Expr(:call, :+, map(n -> :($(Symbol("x", n))[]), 1:k)...)
+        @push! $lhs = $rhs % $T
     end
 
     return Expr(:block, exprs...)
