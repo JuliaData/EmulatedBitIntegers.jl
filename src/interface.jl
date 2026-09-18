@@ -1,11 +1,45 @@
 # A type-specific docstring is added in `@emulate` in order for `help?>` to find the constructor.
 function (::Type{T})(x::Real) where {S, T<:EmulatedInteger{S}}
-    _x = convert(storagetypeof(T), x)
-    inrange(T, _x) ? reinterpret(T, _x) : Core.throw_inexacterror(:trunc, T, _x)
+    reinterpret(T, convert_storage(T, x))
 end
+
 # Due to [unintuitive method resolution in Julia](https://github.com/JuliaLang/julia/issues/24723), the above constructor is ambiguous with Base's `T(::Rational) where T<:Integer` (rational.jl) and `T(::BigFloat) where T<:Integer` (mpfr.jl). So tell Julia which constructor to choose by defining more specific constructors and forwarding them to the one defined above.
 for X in (Rational, BigFloat)
     @eval (::Type{T})(x::$X) where {S, T<:EmulatedInteger{S}} = invoke(T, Tuple{Real}, x)
+end
+
+# Keeping exception construction out of line avoids GC-frame setup on successful conversions.
+@noinline function throw_inexact(::Type{T}, x) where T
+    throw(InexactError(:trunc, T, x))
+end
+
+"""
+    convert_storage(T::Type{<:EmulatedInteger}, x::Real)
+
+Convert `x` to the storage type of `T`, requiring exact representability in `T`.
+
+Separate storage conversion from construction so specialized methods can avoid redundant range checks and unnecessary wide-integer conversions.
+"""
+function convert_storage(::Type{T}, x::Real) where T<:EmulatedInteger
+    _x = convert(T |> storagetypeof, x)
+    inrange(T, _x) ? _x : throw_inexact(T, _x)
+end
+
+function convert_storage(::Type{T}, x::Integer) where T<:EmulatedInteger
+    minvalue(T) <= x <= maxvalue(T) || throw_inexact(T, x)
+    return x % storagetypeof(T)
+end
+
+function convert_storage(::Type{T}, x::Base.IEEEFloat) where T<:EmulatedInteger
+    width = bits(T)
+    width <= 128 || return invoke(convert_storage, Tuple{Type{T}, Real}, T, x)
+    bound = ldexp(one(x), width - (T <: Signed))
+    lower = T <: Signed ? -bound : zero(x)
+    lower <= x < bound && isinteger(x) || throw_inexact(T, x)
+    native = Base.BitSigned_types |> filter(T -> width <= bits(T)) |> first
+    # The checks ensure x is integral and fits T, so it also fits the selected native type.
+    storage = unsafe_trunc(T <: Signed ? native : unsigned(native), x)
+    return storage % storagetypeof(T)
 end
 
 """

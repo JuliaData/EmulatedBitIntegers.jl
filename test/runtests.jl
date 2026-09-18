@@ -16,6 +16,7 @@ values(x) = x |> fieldvalues |> collect
 @emulate(UInt1, Int1, UInt3, Int3, Int4, Int20)
 @emulate(UInt1_64, UInt3_64, Int4_8, Int4_16, Int7_16, Int20_32)
 
+include("constructors.jl")
 include("comparisons.jl")
 include("sums.jl")
 include("broadcasting.jl")
@@ -822,6 +823,34 @@ end
     # Distribution covers the full logical range (extremely high probability with 2000 draws).
     @test extrema(rand(UInt3) for _ in 1:2000) === (UInt3(0), UInt3(7))
     @test extrema(rand(Int3) for _ in 1:2000) === (Int3(-4), Int3(3))
+end
+
+@testset "unsigned remainder with emulated signed divisor" begin
+    @emulate UInt3 UInt7 UInt257 Int3 Int7 Int129 Int6_128
+    @test !isdefined(@__MODULE__, :UInt6_128)
+    for Dividend in (UInt8, UInt128, BitIntegers.UInt256, UInt3, UInt7, UInt257), Divisor in (Int3, Int7, Int129, Int6_128)
+        for value in (big(0), big(1), BigInt(typemax(Dividend)))
+            dividend = Dividend(value)
+            for divisor in (typemin(Divisor), Divisor(-1), Divisor(1), typemax(Divisor))
+                result = @inferred rem(dividend, divisor)
+                @test BigInt(result) == rem(value, BigInt(divisor))
+                @test result isa Unsigned
+                @test result === rem(dividend, unsigned(abs(divisor[])))
+            end
+            @test_throws DivideError rem(dividend, zero(Divisor))
+        end
+    end
+    for Source in (UInt7, UInt257), Step in (Int3, Int7, Int129, Int6_128)
+        for stride in (typemin(Step), typemin(Step) + Step(1), Step(-1))
+            start = min(BigInt(typemax(Source)), 2abs(BigInt(stride)) + 1)
+            actual = @inferred StepRange{Source,Step}(Source(start), stride, Source(0))
+            expected = start:BigInt(stride):big(0)
+            @test first(actual) === Source(start)
+            @test last(actual) === Source(last(expected))
+            @test step(actual) === stride
+            @test (@inferred length(actual)) === Int(length(expected))
+        end
+    end
 end
 
 @testset "range length" begin

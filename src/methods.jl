@@ -35,6 +35,7 @@ Base.rem(x::Integer, ::Type{T}) where T<:EmulatedUnsigned = reinterpret(T, x % s
 # Two-operand `rem`/`mod`: Base's `Integer` fallback would try to promote and recurse forever (since `promote_rule(T, T) === T`). The result's magnitude is strictly less than `|y[]|`, which already fits in `T`, so the storage value already satisfies the wasted-bit invariant (unsigned: high bits zero; signed: sign-extended) and `reinterpret` is safe — and makes it visually obvious there is no recursion back into these same methods via `% T`.
 Base.rem(x::T, y::T) where T<:EmulatedInteger = reinterpret(T, rem(x[], y[]))
 Base.mod(x::T, y::T) where T<:EmulatedInteger = reinterpret(T, mod(x[], y[]))
+Base.rem(x::Unsigned, y::EmulatedSigned) = rem(x, unsigned(abs(y[])))
 
 # `bits` reads the logical width directly off the `L` type parameter of the abstract supertype; one method covers every emulated type. `storagetypeof` is defined in `interface.jl` against the `S` parameter the same way. The remaining trait functions derive from these two; inference folds the chains down to literals at every call site.
 bits(::Type{<:EmulatedInteger{S, L}}) where {S, L} = L
