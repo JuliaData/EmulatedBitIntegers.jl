@@ -101,9 +101,10 @@ function emulate(T::Symbol, t::IntegerType)
         Base.Signed(x::$T_unsigned) = x |> $T_signed
     end
 
-    # Multi-arg `+`/`-` unrolls: the safe arity depends on `wastedbits` (`2^wastedbits - 1` operands fit without intermediate overflow), so the number of methods is per-type and therefore in the macro.
+    # Sums of up to `2^wastedbits` operands fit the storage type, so the arity limit is per-type.
+    # Cap the exponent to avoid overflow and generate methods for at most eight operands.
     for OP ∈ (:+, :-)
-        for k = 3 : min(2^(t |> wastedbits) - 1, 8)
+        for k = 3 : 2^min(wastedbits(t), 3)
             # The following code builds the variable length form of
             # "@eval M Base.$OP(x1::$T, x2::$T, x3::$T) = $OP(x1[], x2[], x3[]) % $T"
             lhs = Expr(:call, :(Base.$OP), map(n -> :($(Symbol("x", n))::$T), 1:k)...)

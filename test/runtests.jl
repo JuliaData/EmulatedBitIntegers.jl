@@ -55,6 +55,27 @@ end
     @test Int20_32 <: Signed
 end
 
+@testset "multiargument addition generation" begin
+    @emulate Int7 UInt7 Int6 UInt6 Int5 UInt5 Int4 UInt4 Int63_128 UInt63_128 Int3_128 UInt3_128 Int3_256 UInt3_256
+    for Source in (Int7, UInt7, Int6, UInt6, Int5, UInt5, Int4, UInt4,
+                   Int63_128, UInt63_128, Int3_128, UInt3_128, Int3_256, UInt3_256)
+        limit = min(big(2)^EmulatedBitIntegers.wastedbits(Source), 8)
+        for arity in 3:9
+            signature = Tuple{typeof(+), ntuple(_ -> Source, arity)...}
+            selected = which(+, Tuple{ntuple(_ -> Source, arity)...})
+            @test (selected.sig === signature) == (arity <= limit)
+            for value in (typemin(Source), zero(Source), typemax(Source))
+                operands = ntuple(_ -> value, arity)
+                exact = sum(BigInt, operands)
+                @test (@inferred +(operands...)) === exact % Source
+                if arity <= limit
+                    @test typemin(storagetypeof(Source)) <= exact <= typemax(storagetypeof(Source))
+                end
+            end
+        end
+    end
+end
+
 @testset "rejected macro inputs" begin
     # Zero-bit integers fail the `1 <= logical_bits < storage_bits` check in `IntegerType`.
     @test_throws ArgumentError @macroexpand @emulate Int0
