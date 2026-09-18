@@ -337,5 +337,29 @@ Base.rand(rng::Random.AbstractRNG, ::Random.SamplerType{T}) where T<:EmulatedInt
     (z << k | z >>> (bits(T) - k)) % T
 end
 
-# Delegate to Base's optimized `bitstring` on the storage value, then keep only the logical low bits. Works for both signed and unsigned emulated integers because the storage is kept clean (sign-extended for negatives, zero-extended otherwise).
-Base.bitstring(x::EmulatedInteger) = bitstring(x[])[end-bits(x)+1:end]
+const hex_to_binary_digits = ntuple(16) do table_index
+    hex_digit = UInt8(table_index - 1)
+    return ntuple(4) do bit_position
+        UInt8('0') + ((hex_digit >> (4 - bit_position)) & 0x01)
+    end
+end
+
+function Base.bitstring(value::EmulatedInteger)
+    storage = value[]
+    buffer = value |> bits |> Base.StringVector
+    index = length(buffer)
+    while index >= 4
+        digits = hex_to_binary_digits[storage & 0b1111 + 0b1]
+        for digit in 1:4
+            @inbounds buffer[index - 4 + digit] = digits[digit]
+        end
+        storage >>>= 4
+        index -= 4
+    end
+    while index >= 1
+        @inbounds buffer[index] = UInt8('0') + storage % UInt8 & 0x01
+        storage >>>= 1
+        index -= 1
+    end
+    return String(buffer)
+end

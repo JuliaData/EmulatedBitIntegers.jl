@@ -832,11 +832,27 @@ end
     @test bitstring(Int3(3)) == "011"
     @test bitstring(Int3(-1)) == "111"
     @test bitstring(Int3(-4)) == "100"
-    # Storage type wider than next power-of-two byte size, exercising the slice past the storage padding.
     @emulate UInt5_16
     @test bitstring(UInt5_16(0)) == "00000"
     @test bitstring(UInt5_16(31)) == "11111"
     @test length(bitstring(UInt5_16(0))) === 5
+
+    using Random
+    @emulate Int1 UInt1 Int2 UInt2 Int4 UInt4 Int5 UInt5 Int6 UInt6 Int7 UInt7 Int9 UInt9 Int20_24 UInt20_24 Int63 UInt63 Int3_128 UInt3_128 Int3_256 UInt3_256 Int128_256 UInt128_256 Int129 UInt129 Int257 UInt257
+    rng = MersenneTwister(851)
+    for Source in (Int1, UInt1, Int2, UInt2, Int3, UInt3, Int4, UInt4,
+                   Int5, UInt5, Int6, UInt6, Int7, UInt7, Int9, UInt9,
+                   Int20_24, UInt20_24, Int63, UInt63, Int3_128, UInt3_128,
+                   Int3_256, UInt3_256, Int128_256, UInt128_256,
+                   Int129, UInt129, Int257, UInt257)
+        inputs = bits(Source) <= 9 ? Source.(BigInt(typemin(Source)):BigInt(typemax(Source))) :
+                 [typemin(Source), typemax(Source), zero(Source), rand(rng, Source, 64)...]
+        for value in inputs
+            result = @inferred bitstring(value)
+            @test result isa String
+            @test result == bitstring(value[])[end-bits(value)+1:end]
+        end
+    end
 end
 
 
