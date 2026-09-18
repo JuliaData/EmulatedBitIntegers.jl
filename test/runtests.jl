@@ -17,6 +17,7 @@ values(x) = x |> fieldvalues |> collect
 @emulate(UInt1_64, UInt3_64, Int4_8, Int4_16, Int7_16, Int20_32)
 
 include("constructors.jl")
+include("widening.jl")
 include("comparisons.jl")
 include("sums.jl")
 include("broadcasting.jl")

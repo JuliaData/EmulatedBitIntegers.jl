@@ -5,9 +5,8 @@ Base.getindex(x::EmulatedInteger) = reinterpret(x |> typeof |> storagetypeof, x)
 
 Base.broadcastable(x::EmulatedInteger) = Ref(x)
 
-# Value form returns a wider value (the unwrapped storage int); type form returns the storage type. Both routed through the per-type `storagetypeof` trait.
-Base.widen(x::EmulatedInteger) = x[]
-Base.widen(::Type{T}) where T<:EmulatedInteger = storagetypeof(T)
+Base.widen(x::T) where T<:EmulatedInteger = convert(widen(T), x[])
+Base.widen(::Type{T}) where {S, T<:EmulatedInteger{S}} = S
 
 # `Base.tryparse_internal(::Type{T<:Integer}, ...)` accumulates digits in `T` itself, requiring `T(base)` to be representable. For narrow emulated types (e.g. `UInt3`, max 7) `T(10)` throws `InexactError` and parsing of any decimal string fails. Route through the storage type which always fits `base`, then range-check into `T`: `parse` delegates to Base's `parse` (which raises `ArgumentError` for malformed input and `OverflowError` if even the storage type overflows) and then range-checks, throwing `OverflowError` for the well-formed-but-out-of-`T`-range case; `tryparse` mirrors it via `tryparse`, returning `nothing` for both malformed input and out-of-range values per Base's no-throw contract.
 function Base.parse(::Type{T}, s::AbstractString; base::Union{Integer,Nothing}=nothing) where T<:EmulatedInteger
