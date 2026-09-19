@@ -22,3 +22,7 @@ To limit cold-run compilation without discarding the important cases:
 Testset times include compilation and depend on suite order and Julia version.
 One second is a target, not a timing assertion. JET and Aqua are unchanged.
 README doctests still run in full, including Documenter's startup cost.
+
+Effect-inference assertions run without coverage or allocation instrumentation.
+Instrumented runs launch `effects.jl` in a clean subprocess with the same project
+and bounds checking enabled, because counters alter the inferred effects.
