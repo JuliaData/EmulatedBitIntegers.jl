@@ -381,6 +381,12 @@ end
 # Uniform random sampling: draw a uniform storage value and re-clean via `% T`. Each logical value gets exactly `2^wastedbits(T)` storage preimages (one for each combination of the wasted bits), so the resulting distribution is uniform over `[minvalue(T), maxvalue(T)]` for both signed and unsigned types.
 Base.rand(rng::Random.AbstractRNG, ::Random.SamplerType{T}) where T<:EmulatedInteger = rand(rng, storagetypeof(T)) % T
 
+function Random.Sampler(::Type{RNG}, range::AbstractUnitRange{<:EmulatedInteger}, repetition::Random.Repetition) where RNG<:Random.AbstractRNG
+    return Random.SamplerSimple(range, Random.Sampler(RNG, first(range)[]:last(range)[], repetition))
+end
+
+Base.rand(rng::Random.AbstractRNG, sampler::Random.SamplerSimple{<:AbstractUnitRange{T}, <:Random.Sampler}) where T<:EmulatedInteger = rand(rng, sampler.data) % T
+
 # Bit-rotation modulo the **logical** width `bits(T)`. Base's primitive `bitrotate` rotates within `8*sizeof`, which would shuffle wasted bits into the logical zone. Implemented branchlessly as `(z << k) | (z >>> (bits(T) - k))` on the zero-extended value, with `k = mod(k, bits(T))`. When `k == 0` the right-shift amount equals `bits(T)`: if `bits(T) < 8*sizeof(storage)` the high bits of `z` are zero so the shift yields 0; if `bits(T) == 8*sizeof(storage)` Julia defines the shift to yield 0 as well.
 @inline function Base.bitrotate(x::T, k::Integer) where T<:EmulatedInteger
     k = mod(k, bits(T))
