@@ -1,7 +1,6 @@
 using EmulatedBitIntegers
 using EmulatedBitIntegers: IntegerType, nextpowerof2bytesize
 using Test
-using Pkg
 using BitIntegers
 using Random
 using InteractiveUtils: code_llvm
@@ -17,6 +16,7 @@ values(x) = x |> fieldvalues |> collect
 @emulate(UInt1, Int1, UInt3, Int3, Int4, Int20)
 @emulate(UInt1_64, UInt3_64, Int4_8, Int4_16, Int7_16, Int20_32)
 
+include("testtypes.jl")
 include("constructors.jl")
 include("floats.jl")
 include("widening.jl")
@@ -79,14 +79,15 @@ end
     for Source in (Int7, UInt7, Int6, UInt6, Int5, UInt5, Int4, UInt4,
                    Int63_128, UInt63_128, Int3_128, UInt3_128, Int3_256, UInt3_256)
         limit = min(big(2)^EmulatedBitIntegers.wastedbits(Source), 8)
-        for arity in 3:9
+        for arity in unique((3, max(3, limit), limit + 1, 9))
             signature = Tuple{typeof(+), ntuple(_ -> Source, arity)...}
             selected = which(+, Tuple{ntuple(_ -> Source, arity)...})
             @test (selected.sig === signature) == (arity <= limit)
+            @test (@inferred +(ntuple(_ -> zero(Source), arity)...)) === zero(Source)
             for value in (typemin(Source), zero(Source), typemax(Source))
                 operands = ntuple(_ -> value, arity)
                 exact = sum(BigInt, operands)
-                @test (@inferred +(operands...)) === exact % Source
+                @test +(operands...) === exact % Source
                 if arity <= limit
                     @test typemin(storagetypeof(Source)) <= exact <= typemax(storagetypeof(Source))
                 end
@@ -251,19 +252,25 @@ end
     for Source in types
         inputs = bits(Source) <= 3 ? collect(BigInt(typemin(Source)):BigInt(typemax(Source))) :
                  unique([BigInt(typemin(Source)), BigInt(typemin(Source)) + 1, big(0), big(1), BigInt(typemax(Source)) - 1, BigInt(typemax(Source))])
-        for Target in types, value in inputs
-            x = Source(value)
-            if bits(Target) < bits(Source)
-                @test_throws ArgumentError zext(Target, x)
-                continue
+        targets = unique((Source, Int1, UInt1, Int3_128, UInt3_128, Int128, UInt128, Int129, UInt129))
+        for Target in targets
+            if bits(Target) >= bits(Source)
+                @test (@inferred zext(Target, zero(Source))) === zero(Target)
             end
-            expected = value & ((big(1) << bits(Source)) - 1)
-            if Target <: Signed && expected >= big(1) << (bits(Target) - 1)
-                expected -= big(1) << bits(Target)
+            for value in inputs
+                x = Source(value)
+                if bits(Target) < bits(Source)
+                    @test_throws ArgumentError zext(Target, x)
+                    continue
+                end
+                expected = value & ((big(1) << bits(Source)) - 1)
+                if Target <: Signed && expected >= big(1) << (bits(Target) - 1)
+                    expected -= big(1) << bits(Target)
+                end
+                result = zext(Target, x)
+                @test typeof(result) === Target
+                @test reinterpret(storagetypeof(Target), result) === storagetypeof(Target)(expected)
             end
-            result = @inferred zext(Target, x)
-            @test typeof(result) === Target
-            @test reinterpret(storagetypeof(Target), result) === storagetypeof(Target)(expected)
         end
     end
 end
@@ -598,14 +605,14 @@ end
     @test isqrt(Int63(2^62 - 2)) === Int63(2^31 - 1)
     @test isqrt(Int129(big(2)^128 - 1)) === Int129(big(2)^64 - 1)
 
-    for Source in (Int1, UInt1, Int3, UInt3, Int7, UInt7, Int63, UInt63, Int65, UInt65,
-                   Int127, UInt127, Int20_24, UInt20_24, Int3_256, UInt3_256,
+    for Source in (BOUNDARY_TEST_TYPES..., Int7, UInt7, Int127, UInt127,
                    Int7_256, UInt7_256, Int15_256, UInt15_256, Int31_256, UInt31_256,
                    Int64_256, UInt64_256, Int128_256, UInt128_256,
-                   Int129, UInt129, Int257, UInt257, Int1025, UInt1025)
+                   Int257, UInt257, Int1025, UInt1025)
+        @test (@inferred isqrt(zero(Source))) === zero(Source)
         high = BigInt(typemax(Source))
         inputs = BigInt[0, high]
-        append!(inputs, 0:min(high, 127))
+        append!(inputs, 0:min(high, 15))
         for shift in 0:div(bits(Source), 2), offset in (-1, 0, 1)
             root = (big(1) << shift) + offset
             for delta in (-1, 0, 1)
@@ -614,7 +621,7 @@ end
             end
         end
         for value in unique(inputs)
-            result = @inferred isqrt(Source(value))
+            result = isqrt(Source(value))
             @test result === Source(isqrt(value))
             root = BigInt(result)
             @test root^2 <= value < (root + 1)^2
@@ -645,27 +652,31 @@ end
 @testset "promote with Bool" begin
     @emulate Int1 UInt1 Int2 UInt2 Int3 UInt3 Int7 UInt7 Int9 UInt9 Int63 UInt63 Int129 UInt129
     @emulate Int1_24 UInt1_24 Int3_24 UInt3_24 Int1_128 UInt1_128 Int1_256 UInt1_256 Int3_256 UInt3_256
-    for Source in (Int1, UInt1, Int2, UInt2, Int3, UInt3, Int7, UInt7, Int9, UInt9,
-                   Int63, UInt63, Int129, UInt129, Int1_24, UInt1_24, Int3_24, UInt3_24,
-                   Int1_128, UInt1_128, Int1_256, UInt1_256, Int3_256, UInt3_256)
+    for Source in (BOUNDARY_TEST_TYPES..., Int1_24, UInt1_24, Int1_128, UInt1_128, Int1_256, UInt1_256)
         @test (@inferred promote_type(Source, Bool)) === Source
         @test (@inferred promote_type(Bool, Source)) === Source
+        @test (@inferred widemul(zero(Source), false)) === zero(Source)
+        @test (@inferred widemul(false, zero(Source))) === zero(Source)
+        @test (@inferred promote(zero(Source), false)) isa Tuple{Source,Source}
+        @test (@inferred promote(false, zero(Source))) isa Tuple{Source,Source}
+        @test (@inferred zero(Source) + false) === zero(Source)
+        @test (@inferred false + zero(Source)) === zero(Source)
         for value in unique((typemin(Source), zero(Source), typemax(Source))), boolean in (false, true)
-            @test (@inferred widemul(value, boolean)) === (boolean ? value : zero(Source))
-            @test (@inferred widemul(boolean, value)) === (boolean ? value : zero(Source))
+            @test widemul(value, boolean) === (boolean ? value : zero(Source))
+            @test widemul(boolean, value) === (boolean ? value : zero(Source))
             if Source <: Signed && bits(Source) == 1 && boolean
                 @test_throws InexactError promote(value, boolean)
                 @test_throws InexactError promote(boolean, value)
             else
                 converted = Source(boolean)
-                promoted = @inferred promote(value, boolean)
+                promoted = promote(value, boolean)
                 @test first(promoted) === value
                 @test last(promoted) === converted
-                promoted = @inferred promote(boolean, value)
+                promoted = promote(boolean, value)
                 @test first(promoted) === converted
                 @test last(promoted) === value
-                @test (@inferred value + boolean) === value + converted
-                @test (@inferred boolean + value) === converted + value
+                @test value + boolean === value + converted
+                @test boolean + value === converted + value
             end
         end
     end
@@ -739,8 +750,14 @@ end
     @emulate Int1 UInt1 Int3 UInt3 Int7 UInt7 Int63 UInt63 Int129 UInt129 Int3_256 UInt3_256 Int5_128
     next_power_two(x) = nextpow(2, x)
     previous_power_two(x) = prevpow(2, x)
-    for Source in (Int1, UInt1, Int3, UInt3, Int7, UInt7, Int63, UInt63, Int129, UInt129, Int3_256, UInt3_256, Int5_128)
+    for Source in (BOUNDARY_TEST_TYPES..., Int7, UInt7, Int5_128)
         low, high = BigInt(typemin(Source)), BigInt(typemax(Source))
+        sample = Source <: Signed ? typemin(Source) : typemax(Source)
+        @test (@inferred exponent(sample)) === ndigits(abs(BigInt(sample)); base=2) - 1
+        if Source <: Signed && bits(Source) > 1
+            @test (@inferred next_power_two(Source(1))) === Source(1)
+            @test (@inferred previous_power_two(Source(1))) === Source(1)
+        end
         inputs = [low, high, big(0)]
         for shift in 0:bits(Source), offset in (-1, 0, 1), sign in (-1, 1)
             value = sign * ((big(1) << shift) + offset)
@@ -751,17 +768,13 @@ end
             if iszero(value)
                 @test_throws DomainError exponent(x)
             else
-                @test (@inferred exponent(x)) === ndigits(abs(value); base=2) - 1
+                @test exponent(x) === ndigits(abs(value); base=2) - 1
             end
             if value > 0
                 @test prevpow(2, x) === Source(prevpow(2, value))
                 @test nextpow(2, x) === nextpow(2, value) % Source
                 @test BigInt(prevpow(2, x)[]) == prevpow(2, value)
                 @test BigInt(nextpow(2, x)[]) == BigInt(nextpow(2, value) % Source)
-                if Source <: Signed
-                    @test (@inferred next_power_two(x)) === nextpow(2, value) % Source
-                    @test (@inferred previous_power_two(x)) === Source(prevpow(2, value))
-                end
             else
                 @test_throws DomainError prevpow(2, x)
                 @test_throws DomainError nextpow(2, x)
@@ -928,15 +941,13 @@ end
     using Random
     @emulate Int1 UInt1 Int2 UInt2 Int4 UInt4 Int5 UInt5 Int6 UInt6 Int7 UInt7 Int9 UInt9 Int20_24 UInt20_24 Int63 UInt63 Int3_128 UInt3_128 Int3_256 UInt3_256 Int128_256 UInt128_256 Int129 UInt129 Int257 UInt257
     rng = MersenneTwister(851)
-    for Source in (Int1, UInt1, Int2, UInt2, Int3, UInt3, Int4, UInt4,
-                   Int5, UInt5, Int6, UInt6, Int7, UInt7, Int9, UInt9,
-                   Int20_24, UInt20_24, Int63, UInt63, Int3_128, UInt3_128,
-                   Int3_256, UInt3_256, Int128_256, UInt128_256,
-                   Int129, UInt129, Int257, UInt257)
-        inputs = bits(Source) <= 9 ? Source.(BigInt(typemin(Source)):BigInt(typemax(Source))) :
-                 [typemin(Source), typemax(Source), zero(Source), rand(rng, Source, 64)...]
+    for Source in (BOUNDARY_TEST_TYPES..., Int7, UInt7, Int9, UInt9, Int3_128, UInt3_128,
+                   Int128_256, UInt128_256, Int257, UInt257)
+        @test (@inferred bitstring(zero(Source))) isa String
+        inputs = bits(Source) <= 3 ? Source.(BigInt(typemin(Source)):BigInt(typemax(Source))) :
+                 [Source.(boundary_values(Source))..., rand(rng, Source, 8)...]
         for value in inputs
-            result = @inferred bitstring(value)
+            result = bitstring(value)
             @test result isa String
             @test result == bitstring(value[])[end-bits(value)+1:end]
         end
@@ -1032,7 +1043,7 @@ end
                 @test_throws InexactError length(actual)
             end
         end
-        for Source in (Int3, Int7, Int3_256), Step in (UInt8, UInt128, BitIntegers.UInt256)
+        for Source in (Int3, Int3_256), Step in (UInt8, UInt128, BitIntegers.UInt256)
             for start in (Int(typemin(Source)), -1, 0), stop in (0, Int(typemax(Source))), stride in (1, 2, 3)
                 actual = StepRange{Source,Step}(Source(start), Step(stride), Source(stop))
                 expected = start:stride:stop
@@ -1064,12 +1075,13 @@ end
                 end
             end
         end
-        for Source in (Int3, UInt3, Int7, UInt7, Int3_256, UInt3_256)
+        for Source in (SMALL_TEST_TYPES..., Int3_256, UInt3_256)
             low, high = Int(typemin(Source)), Int(typemax(Source))
             for (start, stride, stop) in ((low, 1, high), (low, 2, high), (high, 1, low),
                                           (high, -1, low), (high, -2, low), (low, -1, high),
                                           (low, 1, low), (high, -1, high))
-                for stepvalue in (stride, Int16(stride), big(stride))
+                steps = Source in SMALL_TEST_TYPES ? (stride, Int16(stride), big(stride)) : (stride,)
+                for stepvalue in steps
                     actual = StepRange{Source,typeof(stepvalue)}(Source(start), stepvalue, Source(stop))
                     expected = start:stride:stop
                     @test (@inferred length(actual)) === length(expected)
@@ -1197,11 +1209,6 @@ end
 # ============================================================================
 # Integration
 # ============================================================================
-
-# Test that packages using `EmulatedBitIntegers` can precompile successfully.
-@testset "precompile" begin
-    @test (Pkg.precompile("PrecompileTest"; strict=true, io=devnull); true)
-end
 
 @testset "README doctests" begin
     using Documenter

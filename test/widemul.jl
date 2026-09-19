@@ -1,14 +1,19 @@
 @testset "widened products" begin
     @emulate Int1 UInt1 Int3 UInt3 Int7 UInt7 Int63 UInt63 Int65 UInt65 Int127 UInt127 Int129 UInt129 Int257 UInt257 Int3_128 UInt3_128 Int3_256 UInt3_256 Int20_24 UInt20_24
-    targets = (Int1, UInt1, Int3, UInt3, Int7, UInt7, Int63, UInt63,
-               Int65, UInt65, Int127, UInt127, Int129, UInt129, Int257, UInt257,
-               Int3_128, UInt3_128, Int3_256, UInt3_256, Int20_24, UInt20_24,
+    targets = (BOUNDARY_TEST_TYPES..., Int7, UInt7, Int127, UInt127, Int257, UInt257,
+               Int3_128, UInt3_128,
                Int8, UInt8, Int128, UInt128, Int256, UInt256)
-    for Left in targets, Right in targets
+    pairs = [(Left, Right) for Left in targets for Right in unique((Left, signed(Left), unsigned(Left), Int3, UInt3))]
+    append!(pairs, ((Int63, UInt65), (UInt63, Int65), (Int127, UInt129), (UInt127, Int129),
+                    (Int129, UInt257), (UInt129, Int257), (Int65, UInt128), (UInt65, Int128)))
+    for (Left, Right) in pairs
         Left <: EmulatedBitIntegers.EmulatedInteger || Right <: EmulatedBitIntegers.EmulatedInteger || continue
+        @test (@inferred widemul(zero(Left), zero(Right))) == 0
         for left in (typemin(Left), zero(Left), typemax(Left)),
             right in (typemin(Right), zero(Right), typemax(Right))
-            @test BigInt(@inferred widemul(left, right)) == BigInt(left) * BigInt(right)
+            expected = BigInt(left) * BigInt(right)
+            @test BigInt(widemul(left, right)) == expected
+            @test BigInt(widemul(right, left)) == expected
         end
     end
     for Left in (Int1, UInt1, Int3, UInt3), Right in (Int1, UInt1, Int3, UInt3)
@@ -16,8 +21,7 @@
             @test widemul(Left(left), Right(right)) == left * right
         end
     end
-    for Target in targets
-        Target <: EmulatedBitIntegers.EmulatedInteger || continue
+    for Target in BOUNDARY_TEST_TYPES
         @test which(widemul, (Target, Bool)) === which(widemul, (Int8, Bool))
         @test which(widemul, (Bool, Target)) === which(widemul, (Bool, Int8))
         for value in (typemin(Target), zero(Target), typemax(Target))

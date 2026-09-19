@@ -1,8 +1,6 @@
 @testset "storage-backed multiplicative inverses" begin
     @emulate Int1 UInt1 Int3 UInt3 Int7 UInt7 Int63 UInt63 Int65 UInt65 Int129 UInt129 Int257 UInt257 Int3_256 UInt3_256 Int20_24 UInt20_24
-    for Target in (Int1, UInt1, Int3, UInt3, Int7, UInt7, Int63, UInt63,
-                   Int65, UInt65, Int129, UInt129, Int257, UInt257,
-                   Int3_256, UInt3_256, Int20_24, UInt20_24)
+    for Target in (BOUNDARY_TEST_TYPES..., Int7, UInt7, Int257, UInt257)
         low, high = BigInt(typemin(Target)), BigInt(typemax(Target))
         values = Target.(unique(filter(value -> low <= value <= high,
                                        [low, low + 1, -3, -1, 0, 1, 2, 3, high - 1, high])))
@@ -25,7 +23,7 @@
             end
         end
     end
-    for Target in (Int7, UInt7)
+    for Target in SMALL_TEST_TYPES
         for divisor in Int(typemin(Target)):Int(typemax(Target))
             iszero(divisor) && continue
             inverse = Base.MultiplicativeInverses.multiplicativeinverse(Target(divisor))

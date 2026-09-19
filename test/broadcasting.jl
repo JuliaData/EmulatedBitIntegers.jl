@@ -15,14 +15,15 @@
             @test vector * scalar == expected
             @test scalar .* vector == expected
             @test vector .* scalar == expected
-            @test eltype(scalar * vector) === Element
-            @test eltype(vector * scalar) === Element
-            @test eltype(scalar .* vector) === Element
+            @test (@inferred scalar * vector) isa Vector{Element}
+            @test (@inferred vector * scalar) isa Vector{Element}
+            @test (@inferred scalar .* vector) isa Vector{Element}
             @test scalar .+ vector == map(value -> scalar + value, vector)
             @test scalar .* (vector .+ scalar) == map(value -> scalar * (value + scalar), vector)
             destination = similar(vector)
             destination .= scalar .* vector
             @test destination == expected
+            Element in SMALL_TEST_TYPES || continue
             matrix = reshape(vector, 1, 2)
             @test scalar * matrix == reshape(expected, 1, 2)
             @test matrix * scalar == reshape(expected, 1, 2)

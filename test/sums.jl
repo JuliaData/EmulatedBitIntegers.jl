@@ -3,7 +3,13 @@
 
     @test EmulatedBitIntegers.sum_hooks_compatible()
 
-    for Element in (Int3, UInt3, Int9, UInt9, Int3_128, UInt3_128, Int63, UInt63, Int65, UInt65)
+    for Element in BOUNDARY_TEST_TYPES
+        Accumulator = bits(Element) < bits(Int) ? Element <: Signed ? Int : UInt : Element
+        @test sum(fill(typemax(Element), 17)) === (17BigInt(typemax(Element))) % Accumulator
+        @test sum(Element[]) === zero(Accumulator)
+    end
+
+    for Element in REDUCTION_TEST_TYPES
         Accumulator = bits(Element) < bits(Int) ? Element <: Signed ? Int : UInt : Element
         for count in (0, 1, 2, 17, 2048)
             values = fill(Element(1), count)
@@ -13,8 +19,9 @@
             @test sum(value for value in values) === expected
             @test sum(Iterators.filter(_ -> true, values)) === expected
             @test sum(values; init=zero(Accumulator)) === expected
-            @test sum(reshape(values, count, 1); dims=1) == fill(expected, 1, 1)
-            @test eltype(sum(reshape(values, count, 1); dims=1)) === Accumulator
+            result = sum(reshape(values, count, 1); dims=1)
+            @test result == fill(expected, 1, 1)
+            @test eltype(result) === Accumulator
             if count > 0
                 @test sum(Integer[values...]) === expected
                 @test sum(Any[values...]) === expected

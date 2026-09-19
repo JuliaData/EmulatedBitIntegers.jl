@@ -3,8 +3,15 @@
 
     @test EmulatedBitIntegers.prod_hooks_compatible()
 
-    for Element in (Int1, UInt1, Int3, UInt3, Int9, UInt9, Int3_128, UInt3_128,
-                    Int3_256, UInt3_256, Int20_24, UInt20_24, Int63, UInt63, Int65, UInt65)
+    for Element in BOUNDARY_TEST_TYPES
+        Accumulator = bits(Element) < bits(Int) ? Element <: Signed ? Int : UInt : Element
+        values = fill(typemax(Element), 3)
+        @test prod(values) === BigInt(typemax(Element))^3 % Accumulator
+        @test prod(Element[]) === one(Accumulator)
+        @test cumprod(values) == cumprod(Accumulator.(values))
+    end
+
+    for Element in REDUCTION_TEST_TYPES
         Accumulator = bits(Element) < bits(Int) ? Element <: Signed ? Int : UInt : Element
         factor = Element <: Signed ? Element(-1) : one(Element)
         for count in (0, 1, 2, 17, 2048)
@@ -16,13 +23,16 @@
             @test prod(Iterators.filter(_ -> true, values)) === expected
             @test prod(values; init=one(Accumulator)) === expected
             matrix = reshape(values, count, 1)
-            @test prod(matrix; dims=1) == fill(expected, 1, 1)
-            @test eltype(prod(matrix; dims=1)) === Accumulator
+            result = prod(matrix; dims=1)
+            @test result == fill(expected, 1, 1)
+            @test eltype(result) === Accumulator
             cumulative = cumprod(Accumulator.(values))
-            @test cumprod(values) == cumulative
-            @test eltype(cumprod(values)) === Accumulator
-            @test cumprod(matrix; dims=1) == reshape(cumulative, count, 1)
-            @test eltype(cumprod(matrix; dims=1)) === Accumulator
+            result = cumprod(values)
+            @test result == cumulative
+            @test eltype(result) === Accumulator
+            result = cumprod(matrix; dims=1)
+            @test result == reshape(cumulative, count, 1)
+            @test eltype(result) === Accumulator
             @test cumprod!(Vector{Accumulator}(undef, count), values) == cumulative
             if count > 0
                 @test prod(Integer[values...]) === expected
