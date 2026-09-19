@@ -3,9 +3,10 @@ using EmulatedBitIntegers: IntegerType, nextpowerof2bytesize
 using Test
 using Pkg
 using BitIntegers
+using Random
 using InteractiveUtils: code_llvm
 using IterTools: fieldvalues
-using JET: get_reports, report_package
+using JET: JET, get_reports, report_package
 
 integertype(s) = IntegerType(s, Main)
 values(x) = x |> fieldvalues |> collect
@@ -36,7 +37,17 @@ include("ndigits.jl")
 # ============================================================================
 
 @testset "JET" begin
-    @test EmulatedBitIntegers |> report_package |> get_reports |> isempty
+    analysis = report_package(EmulatedBitIntegers)
+    reports = get_reports(analysis)
+    if v"1.10" <= VERSION < v"1.11"
+        filter!(reports) do report
+            !(report isa JET.UndefVarErrorReport &&
+              report.var isa TypeVar && report.var.name === :T &&
+              last(report.vst).linfo.specTypes === Tuple{typeof(Random.gentype), Type{Union{}}})
+        end
+    end
+    isempty(reports) || display(analysis)
+    @test isempty(reports)
 end
 
 
