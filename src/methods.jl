@@ -390,6 +390,18 @@ end
 
 Base.rand(rng::Random.AbstractRNG, sampler::Random.SamplerSimple{<:AbstractUnitRange{T}, <:Random.Sampler}) where T<:EmulatedInteger = rand(rng, sampler.data) % T
 
+@generated function Base.bitreverse(x::T) where {S, T<:EmulatedInteger{S}}
+    width = 8sizeof(S)
+    ir = """
+        declare i$width @llvm.bitreverse.i$width(i$width)
+        define i$width @entry(i$width %value) alwaysinline {
+            %reversed = call i$width @llvm.bitreverse.i$width(i$width %value)
+            ret i$width %reversed
+        }
+        """
+    return :((Base.llvmcall(($ir, "entry"), $S, Tuple{$S}, x[]) >>> wastedbits(T)) % T)
+end
+
 # Bit-rotation modulo the **logical** width `bits(T)`. Base's primitive `bitrotate` rotates within `8*sizeof`, which would shuffle wasted bits into the logical zone. Implemented branchlessly as `(z << k) | (z >>> (bits(T) - k))` on the zero-extended value, with `k = mod(k, bits(T))`. When `k == 0` the right-shift amount equals `bits(T)`: if `bits(T) < 8*sizeof(storage)` the high bits of `z` are zero so the shift yields 0; if `bits(T) == 8*sizeof(storage)` Julia defines the shift to yield 0 as well.
 @inline function Base.bitrotate(x::T, k::Integer) where T<:EmulatedInteger
     k = mod(k, bits(T))
