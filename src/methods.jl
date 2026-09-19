@@ -356,6 +356,9 @@ end
 # Promote with `AbstractFloat`: mirrors Base's policy for primitive integers (e.g. `Int128 + Float16(1) === Inf16`) — the float wins regardless of width, and the user accepts whatever precision/overflow loss that implies (so e.g. `UInt1023 + Float16(1)` is allowed and likely returns `Inf16`). Base's float/integer promote rules use concrete `Float{16,32,64}` plus `Union{Bool,IntN,UIntN,...}` of concrete integer types, none of which include `EmulatedInteger`, so no ambiguity with Base.
 Base.promote_rule(::Type{<:EmulatedInteger}, ::Type{F}) where F<:AbstractFloat = F
 
+Base.unitrange_last(start::T, stop::T) where {S, T<:EmulatedSigned{S,1}} = stop
+Base.step(::AbstractUnitRange{<:EmulatedSigned{S,1}}) where S = 1
+
 # Storage subtraction fits because the logical width is strictly smaller than the storage width. Return an Int count, rejecting oversized distances with InexactError and an overflowing final addition with OverflowError.
 function Base.length(r::AbstractUnitRange{T}) where T<:EmulatedInteger
     if bits(T) < 8sizeof(Int) - 1

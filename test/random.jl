@@ -30,11 +30,9 @@ using Random
             @test rand!(Xoshiro(1234), destination, range) === destination
             @test destination == values
         end
-        if Element <: Unsigned || bits(Element) > 1
-            empty_range = maximum:minimum
-            @test_throws ArgumentError rand(Xoshiro(1), empty_range)
-            @test_throws ArgumentError Random.Sampler(Xoshiro, empty_range, Val(Inf))
-        end
+        empty_range = maximum:minimum
+        @test_throws ArgumentError rand(Xoshiro(1), empty_range)
+        @test_throws ArgumentError Random.Sampler(Xoshiro, empty_range, Val(Inf))
     end
 
     for Element in (Int3, UInt3, Int63, UInt63, Int65, UInt65, Int129, UInt129)
