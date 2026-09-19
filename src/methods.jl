@@ -340,6 +340,8 @@ end
 
 Base.hash(x::EmulatedInteger, h::UInt) = hash(x[], h)
 
+Base.promote_rule(::Type{T}, ::Type{Bool}) where T<:EmulatedInteger = T
+
 # Pick the wider logical type, then unsigned on equal width, then the larger storage for equally signed emulated types. Leave other ties unresolved so users can supply a rule for their types.
 function Base.promote_rule(::Type{T}, ::Type{Y}) where {T<:EmulatedInteger, Y<:Integer}
     if bits(T) > bits(Y)

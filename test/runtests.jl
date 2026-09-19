@@ -631,6 +631,35 @@ end
     @test UInt14(82) + UInt8(14) === UInt14(96)
 end
 
+@testset "promote with Bool" begin
+    @emulate Int1 UInt1 Int2 UInt2 Int3 UInt3 Int7 UInt7 Int9 UInt9 Int63 UInt63 Int129 UInt129
+    @emulate Int1_24 UInt1_24 Int3_24 UInt3_24 Int1_128 UInt1_128 Int1_256 UInt1_256 Int3_256 UInt3_256
+    for Source in (Int1, UInt1, Int2, UInt2, Int3, UInt3, Int7, UInt7, Int9, UInt9,
+                   Int63, UInt63, Int129, UInt129, Int1_24, UInt1_24, Int3_24, UInt3_24,
+                   Int1_128, UInt1_128, Int1_256, UInt1_256, Int3_256, UInt3_256)
+        @test (@inferred promote_type(Source, Bool)) === Source
+        @test (@inferred promote_type(Bool, Source)) === Source
+        for value in unique((typemin(Source), zero(Source), typemax(Source))), boolean in (false, true)
+            @test (@inferred widemul(value, boolean)) === (boolean ? value : zero(Source))
+            @test (@inferred widemul(boolean, value)) === (boolean ? value : zero(Source))
+            if Source <: Signed && bits(Source) == 1 && boolean
+                @test_throws InexactError promote(value, boolean)
+                @test_throws InexactError promote(boolean, value)
+            else
+                converted = Source(boolean)
+                promoted = @inferred promote(value, boolean)
+                @test first(promoted) === value
+                @test last(promoted) === converted
+                promoted = @inferred promote(boolean, value)
+                @test first(promoted) === converted
+                @test last(promoted) === value
+                @test (@inferred value + boolean) === value + converted
+                @test (@inferred boolean + value) === converted + value
+            end
+        end
+    end
+end
+
 @testset "promote equal logical widths" begin
     @emulate Int3 UInt3 Int3_128 UInt3_128 Int3_256 UInt3_256
     for types in ((Int3, Int3_128, Int3_256), (UInt3, UInt3_128, UInt3_256))
