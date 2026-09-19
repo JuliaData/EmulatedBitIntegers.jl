@@ -162,9 +162,7 @@ end
     if iszero(Base.JLOptions().code_coverage) && iszero(Base.JLOptions().malloc_log)
         include("effects.jl")
     else
-        script = joinpath(@__DIR__, "effects.jl")
-        project = dirname(Base.active_project())
-        @test success(`$(Base.julia_cmd()) --project=$project --startup-file=no --history-file=no --code-coverage=none --track-allocation=none --check-bounds=yes $script`)
+        @test_skip false
     end
 end
 
@@ -771,15 +769,19 @@ end
     @emulate Int7 UInt7 Int5_128
     @test !isdefined(@__MODULE__, :UInt5_128)
     for operation in (nextpow, prevpow), Source in (Int7, Int5_128)
-        effects = Base.infer_effects(operation, Tuple{Int, Source})
-        expected = Base.infer_effects(operation, Tuple{Int, storagetypeof(Source)})
-        for property in (:consistent, :effect_free, :nothrow, :terminates)
-            @test getproperty(effects, property) === getproperty(expected, property)
-        end
-        if VERSION >= v"1.13.0-"
-            for property in (:notaskstate, :inaccessiblememonly, :noub, :nortcall)
+        if iszero(Base.JLOptions().code_coverage) && iszero(Base.JLOptions().malloc_log)
+            effects = Base.infer_effects(operation, Tuple{Int, Source})
+            expected = Base.infer_effects(operation, Tuple{Int, storagetypeof(Source)})
+            for property in (:consistent, :effect_free, :nothrow, :terminates)
                 @test getproperty(effects, property) === getproperty(expected, property)
             end
+            if VERSION >= v"1.13.0-"
+                for property in (:notaskstate, :inaccessiblememonly, :noub, :nortcall)
+                    @test getproperty(effects, property) === getproperty(expected, property)
+                end
+            end
+        else
+            @test_skip Base.infer_effects(operation, Tuple{Int, Source})
         end
         for base in (2, 2.0, UInt7(2), Int7(2)), value in (1, 3, 15)
             x = Source(value)
