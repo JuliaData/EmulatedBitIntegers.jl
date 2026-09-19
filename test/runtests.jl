@@ -17,6 +17,7 @@ values(x) = x |> fieldvalues |> collect
 @emulate(UInt1_64, UInt3_64, Int4_8, Int4_16, Int7_16, Int20_32)
 
 include("constructors.jl")
+include("floats.jl")
 include("widening.jl")
 include("widemul.jl")
 include("multiplicativeinverses.jl")
@@ -580,6 +581,7 @@ end
 @testset "isqrt" begin
     @emulate Int1 UInt1 Int3 UInt3 Int7 UInt7 Int63 UInt63 Int65 UInt65 Int127 UInt127
     @emulate Int20_24 UInt20_24 Int3_256 UInt3_256 Int64_256 UInt64_256 Int128_256 UInt128_256
+    @emulate Int7_256 UInt7_256 Int15_256 UInt15_256 Int31_256 UInt31_256
     @emulate Int129 UInt129 Int257 UInt257 Int1025 UInt1025
 
     @test isqrt(Int63(2^62 - 2)) === Int63(2^31 - 1)
@@ -587,6 +589,7 @@ end
 
     for Source in (Int1, UInt1, Int3, UInt3, Int7, UInt7, Int63, UInt63, Int65, UInt65,
                    Int127, UInt127, Int20_24, UInt20_24, Int3_256, UInt3_256,
+                   Int7_256, UInt7_256, Int15_256, UInt15_256, Int31_256, UInt31_256,
                    Int64_256, UInt64_256, Int128_256, UInt128_256,
                    Int129, UInt129, Int257, UInt257, Int1025, UInt1025)
         high = BigInt(typemax(Source))

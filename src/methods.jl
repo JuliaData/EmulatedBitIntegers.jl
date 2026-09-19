@@ -118,12 +118,8 @@ Base.abs(x::T) where T<:EmulatedSigned = abs(x[]) % T
 Base.flipsign(x::T, y::Signed) where T<:EmulatedSigned = signbit(y) ? -x[] % T : x
 
 function Base.isqrt(x::T) where T<:EmulatedInteger
-    storage = x[]
+    storage = prefer_native(x)
     storage isa Base.BitInteger && return isqrt(storage) % T
-    if bits(T) <= 128
-        target = bits(T) <= 64 ? Int64 : Int128
-        return isqrt(storage % (x isa Signed ? target : unsigned(target))) % T
-    end
     signbit(storage) && throw(DomainError(x, "isqrt requires a nonnegative integer"))
     return isqrt(BigInt(storage)) % T
 end
@@ -213,7 +209,16 @@ Base.count_zeros(x::T) where T<:EmulatedInteger = count_zeros(x[] | (~storagetyp
 
 Base.rem(x::EmulatedInteger, Target::Base.BitIntegerType) = x[] % Target
 
-Base.:/(x::T, y::T) where T<:EmulatedInteger = x[] / y[] # Should result in Float64
+function prefer_native(x::T) where T<:Integer
+    storage = x[]
+    storage isa Base.BitInteger && return storage
+    width = bits(T)
+    width <= 128 || return storage
+    Native = Base.BitSigned_types |> filter(Native -> width <= bits(Native)) |> first
+    return storage % (x isa Signed ? Native : unsigned(Native))
+end
+
+Base.:/(x::T, y::T) where T<:EmulatedInteger = prefer_native(x) / prefer_native(y)
 
 # Pad to the logical hex width, so `UInt3(7)` prints as `0x7` rather than `0x07`.
 # Note, that this violates the round-trippability of the 2-arg `show` method. However, this is done to be compatible with the types from `Base`, as `Int8(-2)  |> repr |> Meta.parse |> eval |> typeof` results in `Int`.
@@ -260,12 +265,16 @@ Base.trailing_zeros(x::T) where T<:EmulatedInteger = trailing_zeros(x[] | (one(s
 # Mask the sign-extension away via `zext`, then count. Unsigned `zext` is a no-op; signed `zext` clears the high all-ones region that would otherwise inflate the count (e.g. for `-1` whose storage is all ones). Branchless, uniform with `count_ones`.
 Base.trailing_ones(x::EmulatedInteger) = x |> zext |> trailing_ones
 
-Base.AbstractFloat(x::EmulatedInteger) = x[] |> AbstractFloat
+Base.AbstractFloat(x::EmulatedInteger) = prefer_native(x) |> AbstractFloat
 Base.BigInt(x::EmulatedInteger) = BigInt(x[])
 
 # Promote to the regular primitive types resulting in InexactErrors if values are not representable.
-for B in Union{Base.BitInteger, Base.IEEEFloat} |> Base.uniontypes .|> Symbol
+for B in Base.BitInteger |> Base.uniontypes .|> Symbol
     @eval Base.$B(x::EmulatedInteger) = x[] |> $B
+end
+
+for Float in Base.IEEEFloat |> Base.uniontypes .|> Symbol
+    @eval Base.$Float(x::EmulatedInteger) = prefer_native(x) |> $Float
 end
 
 # `signed`/`unsigned` (and their `Signed`/`Unsigned` constructor forms) map an emulated type onto its
@@ -311,11 +320,8 @@ end
         target = Float === Float64 || magnitude_bits > precision(Float32) ? Float64 : Float32
         return target(storage), target(y)
     end
+    storage = prefer_native(x)
     storage isa Base.BitInteger && return storage, y
-    if width <= 128
-        target = width <= 8 ? Int8 : width <= 16 ? Int16 : width <= 32 ? Int32 : width <= 64 ? Int64 : Int128
-        return storage % (x isa Signed ? target : unsigned(target)), y
-    end
     return BigInt(storage), y
 end
 @inline prepromote(x::Base.IEEEFloat, y::Integer) = reverse(prepromote(y, x))
