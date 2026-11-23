@@ -194,11 +194,15 @@ end
     @test bits(UInt8) === 8
     @test bits(Int64) === 64
     @test bits(UInt3) === 3
+    @test bits(Bool) === 1
+    @test bits(true) === 1
     # Plain struct: bits is the recursive sum of `bits` over fields.
     struct TwoInts; a::Int8; b::Int16; end
     @test bits(TwoInts) === 24
     struct Mixed; a::UInt3; b::Int5; c::UInt8; end
     @test bits(Mixed) === 3 + 5 + 8
+    struct WithBool; a::Bool; b::UInt3; end
+    @test bits(WithBool) === 1 + 3
     # Nested struct.
     struct Outer; head::Int8; inner::TwoInts; end
     @test bits(Outer) === 8 + 24
@@ -228,13 +232,18 @@ end
     @test zext(Int9, Int3(-1)) === Int9(7)
     @test zext(Int6_128, Int3(-1)) === Int6_128(7)
     @test zext(Int8, UInt8(255)) === Int8(-1)
+    @test zext(UInt1, true) === UInt1(1)
+    @test zext(Int1, true) === Int1(-1)
+    @test zext(Bool, UInt1(1)) === true
+    struct NoBits <: Integer end
+    @test_throws ArgumentError zext(NoBits, true)
 
-    types = (Int1, Int1_128, UInt1, Int3, UInt3, Int3_128, UInt3_128, Int6_128,
+    types = (Bool, Int1, Int1_128, UInt1, Int3, UInt3, Int3_128, UInt3_128, Int6_128,
              Int8, UInt8, Int9, UInt9, Int128, UInt128, Int129, UInt129, Int256, UInt256)
     for Source in types
         inputs = bits(Source) <= 3 ? collect(BigInt(typemin(Source)):BigInt(typemax(Source))) :
                  unique([BigInt(typemin(Source)), BigInt(typemin(Source)) + 1, big(0), big(1), BigInt(typemax(Source)) - 1, BigInt(typemax(Source))])
-        targets = unique((Source, Int1, UInt1, Int3_128, UInt3_128, Int128, UInt128, Int129, UInt129))
+        targets = unique((Source, Bool, Int1, UInt1, Int3_128, UInt3_128, Int128, UInt128, Int129, UInt129))
         for Target in targets
             if bits(Target) >= bits(Source)
                 @test (@inferred zext(Target, zero(Source))) === zero(Target)

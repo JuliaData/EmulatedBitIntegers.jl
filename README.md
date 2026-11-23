@@ -179,7 +179,7 @@ cause an explicit error rather than silently disabling widening.
 
 The package exposes a few helpers usable on both emulated and standard integers.
 
-`bits(T)` (or `bits(x)`) returns the logical bit width of a type. For `BitInteger` types it matches `8 * sizeof(T)`; for emulated types it is the *logical* width, not the storage width:
+`bits(T)` (or `bits(x)`) returns the logical bit width of a type. For `BitInteger` types it matches `8 * sizeof(T)`; for emulated types and `Bool` it is the *logical* width, not the storage width:
 
 ```jldoctest usage
 julia> bits(UInt3)
@@ -187,6 +187,9 @@ julia> bits(UInt3)
 
 julia> bits(UInt8)
 8
+
+julia> bits(Bool)
+1
 ```
 
 `storagetypeof(T)` returns the primitive type used internally to store values of `T`. For non-emulated primitive types it returns `T` itself:

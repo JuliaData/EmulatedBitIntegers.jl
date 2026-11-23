@@ -77,8 +77,8 @@ end
 
 Logical bit width of `T` (or `typeof(x)`).
 
-For the default primitive types, `bits(T) == 8 * sizeof(T)`. For struct types,
-`bits(T)` is the recursive sum of `bits` over the fields.
+For the default primitive types `bits(T) == 8 * sizeof(T)` except for `Bool` which is `1`.
+For struct types, `bits(T)` is the recursive sum of `bits` over the fields.
 Specific types may override this to report their logical width directly when
 their storage includes padding.
 """
@@ -88,6 +88,7 @@ function bits(::Type{T}) where T
     8 * Base.packedsize(T)
 end
 bits(::Type{T}) where T<:Base.BitInteger = 8 * sizeof(T)
+bits(::Type{Bool}) = 1
 # `Base.Bottom` is a subtype of every type, including `Base.BitInteger`, so the `<:Base.BitInteger` method above would match it and recurse into `sizeof(Bottom)`, which errors. Bottom has no instances, so this branch is unreachable at runtime; the explicit method exists only to give type inference (and JET) a deterministic answer instead of the propagated error.
 bits(::Type{Base.Bottom}) = lazy"Cannot determine bits for Bottom" |> ArgumentError |> throw
 bits(x) = x |> typeof |> bits
@@ -109,7 +110,9 @@ Zero-extend the bit pattern of `x` to integer type `T`, whose logical width must
 """
 function zext(T::Type{<:Integer}, x::Integer)
     T |> bits >= x |> typeof |> bits || lazy"$T must not be a type with less bits than the type of x" |> ArgumentError |> throw
-    reinterpret(x |> zext |> typeof |> unsigned, x |> zext) % T
+    # `unsigned(Bool) === UInt64`, so `Bool` skips the `reinterpret`.
+    pattern = x isa Bool ? x : reinterpret(x |> zext |> typeof |> unsigned, x |> zext)
+    pattern % T
 end
 
 # Zero-extension to the storage type. Unsigned storage is already clean. Signed storage is sign-extended, so mask off the wasted high bits; the mask `storagetypeof(T)(-1) >>> wastedbits(T)` folds to a literal.
