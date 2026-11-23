@@ -38,6 +38,12 @@ if isdefined(Base, :_powermod_mi_legal)
     end
 end
 
+# Base's generic code wraps `abs(typemin(T))` and needs `one(T)` (absent for `Int1`), so compute on a native modulus. Base's `Int128` method goes through `BigInt`, so up to 64 logical bits use the narrowest native type even for 128-bit storage. The residue lies between 0 and the modulus. The `% S` only matters for Julia 1.10, whose `powermod` returns a wider type.
+function Base.powermod(x::Integer, p::Integer, m::T) where {S, T<:EmulatedSigned{S}}
+    modulus = bits(T) <= 64 ? m[] % (Base.BitSigned_types |> filter(Native -> bits(T) <= bits(Native)) |> first) : m[]
+    return reinterpret(T, powermod(x[], p, modulus) % S)
+end
+
 function widemul_storage(x::Integer, y::Integer)
     left, right = x[], y[]
     isprimitivetype(typeof(left)) && isprimitivetype(typeof(right)) || return widemul(left, right)
@@ -86,7 +92,26 @@ Base.rem(x::Integer, ::Type{T}) where T<:EmulatedUnsigned = reinterpret(T, x % s
 # Two-operand `rem`/`mod`: Base's `Integer` fallback would try to promote and recurse forever (since `promote_rule(T, T) === T`). The result's magnitude is strictly less than `|y[]|`, which already fits in `T`, so the storage value already satisfies the wasted-bit invariant (unsigned: high bits zero; signed: sign-extended) and `reinterpret` is safe — and makes it visually obvious there is no recursion back into these same methods via `% T`.
 Base.rem(x::T, y::T) where T<:EmulatedInteger = reinterpret(T, rem(x[], y[]))
 Base.mod(x::T, y::T) where T<:EmulatedInteger = reinterpret(T, mod(x[], y[]))
-Base.rem(x::Unsigned, y::EmulatedSigned) = rem(x, unsigned(abs(y[])))
+
+# Mixed-sign division computes exactly in a signed storage type holding both operands, then returns the promoted type. A result outside it throws `InexactError` instead of wrapping.
+function divide_mixed_sign(op::F, x::Integer, y::Integer, mode::Vararg{Any, N}) where {F, N}
+    T = promote_type(typeof(x), typeof(y))
+    left, right = prepromote(x, y)
+    typeof(left) === typeof(right) && left isa Signed && return map(T, op(left, right, mode...))
+    S = signed(promote_type(typeof(left), typeof(right)))
+    W = widen(S)
+    # `BigInt` allocates, so only take it when the unsigned operand exceeds `S`.
+    if W === BigInt && (left isa Unsigned ? left : right) <= typemax(S)
+        return map(T, op(left % S, right % S, mode...))
+    end
+    return map(T, op(left % W, right % W, mode...))
+end
+for OP in (:div, :rem, :mod, :fld, :cld)
+    @eval begin
+        Base.$OP(x::EmulatedSigned, y::Unsigned) = divide_mixed_sign($OP, x, y)
+        Base.$OP(x::Unsigned, y::EmulatedSigned) = divide_mixed_sign($OP, x, y)
+    end
+end
 
 # `bits` reads the logical width directly off the `L` type parameter of the abstract supertype; one method covers every emulated type. `storagetypeof` is defined in `interface.jl` against the `S` parameter the same way. The remaining trait functions derive from these two; inference folds the chains down to literals at every call site.
 bits(::Type{<:EmulatedInteger{S, L}}) where {S, L} = L
@@ -107,6 +132,14 @@ end
 for RM in (RoundingMode{:Up}, RoundingMode{:Down}, RoundingMode{:ToZero}, RoundingMode{:FromZero}, RoundingMode{:Nearest}, RoundingMode{:NearestTiesAway}, RoundingMode{:NearestTiesUp})
     for P in (EmulatedSigned, EmulatedUnsigned)
         @eval Base.div(x::T, y::T, r::$RM) where T<:$P = div(x[], y[], r) % T
+    end
+    # Base derives these from wrapping arithmetic in the promoted type, which would bypass the exact mixed-sign path.
+    for OP in (:div, :rem, :divrem)
+        hasmethod(getfield(Base, OP), Tuple{Int, Int, RM}) || continue
+        @eval begin
+            Base.$OP(x::EmulatedSigned, y::Unsigned, r::$RM) = divide_mixed_sign($OP, x, y, r)
+            Base.$OP(x::Unsigned, y::EmulatedSigned, r::$RM) = divide_mixed_sign($OP, x, y, r)
+        end
     end
 end
 
@@ -341,6 +374,8 @@ end
 Base.hash(x::EmulatedInteger, h::UInt) = hash(x[], h)
 
 Base.promote_rule(::Type{T}, ::Type{Bool}) where T<:EmulatedInteger = T
+# Base promotes every `Integer` with `BigInt` to `BigInt`. A width-based answer would disagree and recurse.
+Base.promote_rule(::Type{<:EmulatedInteger}, ::Type{BigInt}) = BigInt
 
 # Pick the wider logical type, then unsigned on equal width, then the larger storage for equally signed emulated types. Leave other ties unresolved so users can supply a rule for their types.
 function Base.promote_rule(::Type{T}, ::Type{Y}) where {T<:EmulatedInteger, Y<:Integer}
@@ -366,6 +401,15 @@ Base.promote_rule(::Type{<:EmulatedInteger}, ::Type{F}) where F<:AbstractFloat =
 
 Base.unitrange_last(start::T, stop::T) where {S, T<:EmulatedSigned{S,1}} = stop
 Base.step(::AbstractUnitRange{<:EmulatedSigned{S,1}}) where S = 1
+
+# The storage distance cannot overflow, so neither the re-cleaning of `T` arithmetic nor Base's `unsigned` fallback (which needs the unsigned counterpart of `T`) is needed. The last element lies between the endpoints, so it fits `T`.
+function Base.steprange_last(start::T, step::Integer, stop::T) where {S, T<:EmulatedSigned{S}}
+    iszero(step) && throw(ArgumentError("step cannot be zero"))
+    stop == start && return stop
+    # Base's empty representation `start ∓ 1` needs `oneunit(step)`, which `Int1` lacks.
+    (step > zero(step)) == (stop > start) || return (step > zero(step) ? start[] - one(S) : start[] + one(S)) % T
+    return reinterpret(T, stop[] - rem(stop[] - start[], step[]) % S)
+end
 
 # Storage subtraction fits because the logical width is strictly smaller than the storage width. Return an Int count, rejecting oversized distances with InexactError and an overflowing final addition with OverflowError.
 function Base.length(r::AbstractUnitRange{T}) where T<:EmulatedInteger

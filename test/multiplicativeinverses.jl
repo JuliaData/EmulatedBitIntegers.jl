@@ -63,3 +63,22 @@ end
         @test Base._powermod_mi_legal(UInt8(3))
     end
 end
+
+@testset "signed modular powers" begin
+    @emulate Int1 Int3 Int3_256 Int7_128 Int129
+    @test powermod(3, 2, Int3(-4)) === Int3(-3)
+    @test powermod(2, 0, Int1(-1)) === Int1(0)
+    power_allocations(x, p, m) = @allocated powermod(x, p, m)
+    power_allocations(Int7_128(5), 97, Int7_128(61))
+    @test power_allocations(Int7_128(5), 97, Int7_128(61)) == 0
+    for Target in (Int1, Int3, Int3_256, Int7_128, Int129)
+        @test (@inferred powermod(Target(-1), 3, typemin(Target))) === Target(powermod(-1, 3, BigInt(typemin(Target))))
+        low, high = BigInt(typemin(Target)), BigInt(typemax(Target))
+        values = unique(filter(value -> low <= value <= high, [low, low + 1, big(-1), big(0), big(1), big(2), high - 1, high]))
+        for modulus in values, base in values, power in (-1, 0, 1, 2, 3, 257)
+            iszero(modulus) && continue
+            power < 0 && gcd(base, modulus) != 1 && continue
+            @test powermod(Target(base), power, Target(modulus)) === Target(powermod(base, power, modulus))
+        end
+    end
+end

@@ -638,6 +638,13 @@ end
     @test UInt14(17) + Int2(1) === UInt14(18)
     @test UInt14(42) + Int16(-2) === Int16(40)
     @test UInt14(82) + UInt8(14) === UInt14(96)
+    # `BigInt` wins regardless of the logical width.
+    for Source in (Int3, UInt3, Int129, UInt129)
+        @test (@inferred promote_type(Source, BigInt)) === BigInt
+        @test (@inferred promote_type(BigInt, Source)) === BigInt
+        @test (Source(3) + big(2))::BigInt == 5
+        @test (big(2) + Source(3))::BigInt == 5
+    end
 end
 
 @testset "promote with Bool" begin
@@ -973,9 +980,7 @@ end
             dividend = Dividend(value)
             for divisor in (typemin(Divisor), Divisor(-1), Divisor(1), typemax(Divisor))
                 result = @inferred rem(dividend, divisor)
-                @test BigInt(result) == rem(value, BigInt(divisor))
-                @test result isa Unsigned
-                @test result === rem(dividend, unsigned(abs(divisor[])))
+                @test result === promote_type(Dividend, Divisor)(rem(value, BigInt(divisor)))
             end
             @test_throws DivideError rem(dividend, zero(Divisor))
         end
@@ -989,6 +994,64 @@ end
             @test last(actual) === Source(last(expected))
             @test step(actual) === stride
             @test (@inferred length(actual)) === Int(length(expected))
+        end
+    end
+end
+
+@testset "mixed-sign division" begin
+    @emulate Int3 UInt3 Int7 UInt7 Int11 Int129 UInt129
+    @test !isdefined(@__MODULE__, :UInt11)
+    @test div(Int7(3), UInt7(2)) === UInt7(1)
+    @test mod(Int3(-3), UInt8(4)) === 0x01
+    @test powermod(Int3(-3), 2, UInt7(5)) === UInt7(4)
+    @test (@inferred divrem(UInt7(5), Int11(-2))) === (Int11(-2), Int11(1))
+    @test (@inferred fldmod(Int11(-3), UInt7(2))) === (Int11(-2), Int11(1))
+    @test (@inferred div(UInt7(5), Int7(-9), RoundToZero)) === UInt7(0)
+    @test_throws InexactError divrem(Int7(-5), UInt7(9))
+    remainder_allocations(x, y) = @allocated rem(x, y)
+    remainder_allocations(UInt128(5), Int7(3))
+    @test remainder_allocations(UInt128(5), Int7(3)) == 0
+    function samples(T)
+        low, high = BigInt(typemin(T)), BigInt(typemax(T))
+        high - low < 16 && return low:high
+        return unique([low, low + 1, max(low, big(-3)), max(low, big(-1)), big(0), big(1), big(2), big(3), high - 1, high])
+    end
+    modes = (RoundUp, RoundDown, RoundToZero, RoundFromZero, RoundNearest, RoundNearestTiesAway, RoundNearestTiesUp)
+    # Every entry point on the shared-storage pair. The storage choice does not depend on the operation, so the other pairs (widened native, `Int128` before `BigInt`, signed result, widened BitIntegers) check `div`, `rem` and `mod` only.
+    pairs = ((Int3, UInt3), (Int3, UInt8), (Int3, UInt128), (Int11, UInt8), (Int129, BitIntegers.UInt256))
+    for (SignedOperand, UnsignedOperand) in pairs
+        # Plain `(op, mode)` pairs: destructuring `(op, mode...)` compiles `Base.rest` per call type.
+        calls = Any[(div, nothing), (rem, nothing), (mod, nothing)]
+        if UnsignedOperand === UInt3
+            for op in (fld, cld, divrem, fldmod)
+                push!(calls, (op, nothing))
+            end
+            for op in (div, rem, divrem), mode in modes
+                hasmethod(op, Tuple{Int, Int, typeof(mode)}) && push!(calls, (op, mode))
+            end
+        end
+        for (Left, Right) in ((SignedOperand, UnsignedOperand), (UnsignedOperand, SignedOperand))
+            Target = promote_type(Left, Right)
+            low, high = BigInt(typemin(Target)), BigInt(typemax(Target))
+            for left in samples(Left), right in samples(Right), (op, mode) in calls
+                x, y = Left(left), Right(right)
+                actual = try
+                    isnothing(mode) ? op(x, y) : op(x, y, mode)
+                catch err
+                    err isa Union{DivideError, InexactError} || rethrow()
+                    err
+                end
+                if iszero(right)
+                    @test actual isa DivideError
+                    continue
+                end
+                expected = isnothing(mode) ? op(left, right) : op(left, right, mode)
+                if all(part -> low <= part <= high, expected)
+                    @test actual === map(Target, expected)
+                else
+                    @test actual isa InexactError
+                end
+            end
         end
     end
 end
@@ -1090,6 +1153,17 @@ end
                 end
             end
         end
+        @emulate Int11
+        @test !isdefined(@__MODULE__, :UInt11)
+        low, high = Int(typemin(Int11)), Int(typemax(Int11))
+        for start in (low, -1, 0, high), stop in (low, 0, high), stride in (-3, -2, -1, 1, 2, 3)
+            actual = Int11(start):Int11(stride):Int11(stop)
+            expected = start:stride:stop
+            @test (@inferred length(actual)) === length(expected)
+            @test Int.(collect(actual)) == collect(expected)
+        end
+        @test (@inferred length(Int1(-1):Int1(-1):Int1(0))) === 0
+        @test collect(Int1(0):Int1(-1):Int1(-1)) == [Int1(0), Int1(-1)]
         for Source in (Int129, UInt129), endpoint in (typemin(Source), typemax(Source))
             stride = endpoint == typemin(Source) ? 2 : -2
             start = BigInt(endpoint)
